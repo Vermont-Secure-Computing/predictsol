@@ -1,5 +1,5 @@
 {
-  "address": "BNn1nkWfB99z9b515Bk6aC5sDexX1Hf5BpfTL1zr7gtG",
+  "address": "BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V",
   "metadata": {
     "name": "predictol_sc",
     "version": "0.1.0",
@@ -442,6 +442,93 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "redeem_pair_while_active",
+      "discriminator": [
+        255,
+        73,
+        249,
+        195,
+        122,
+        179,
+        73,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "true_mint",
+          "writable": true
+        },
+        {
+          "name": "false_mint",
+          "writable": true
+        },
+        {
+          "name": "user_true_ata",
+          "writable": true
+        },
+        {
+          "name": "user_false_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     }
   ],
   "accounts": [
@@ -497,6 +584,51 @@
       "code": 6004,
       "name": "InvalidAmount",
       "msg": "Invalid amount"
+    },
+    {
+      "code": 6005,
+      "name": "BettingPeriodEnded",
+      "msg": "Betting period has ended"
+    },
+    {
+      "code": 6006,
+      "name": "EventAlreadyResolved",
+      "msg": "Event already resolved"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientTrueBalance",
+      "msg": "Insufficient TRUE balance"
+    },
+    {
+      "code": 6008,
+      "name": "InsufficientFalseBalance",
+      "msg": "Insufficient FALSE balance"
+    },
+    {
+      "code": 6009,
+      "name": "VaultInsufficientFunds",
+      "msg": "Vault has insufficient funds"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidVault",
+      "msg": "Invalid vault for this event"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidMint",
+      "msg": "Invalid mint for this event"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidTokenAccountOwner",
+      "msg": "Invalid token account owner"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidTokenAccountMint",
+      "msg": "Invalid token account mint"
     }
   ],
   "types": [

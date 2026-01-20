@@ -3,11 +3,11 @@ use anchor_lang::prelude::SolanaSysvar;
 use anchor_lang::solana_program::{program::invoke_signed, system_instruction};
 use anchor_lang::solana_program::program_pack::Pack;
 
-use anchor_spl::token::{self, InitializeMint, Mint, MintTo, Token, TokenAccount};
+use anchor_spl::token::{self, Burn, InitializeMint, Mint, MintTo, Token, TokenAccount};
 use anchor_spl::token::spl_token;
 
 
-declare_id!("BNn1nkWfB99z9b515Bk6aC5sDexX1Hf5BpfTL1zr7gtG");
+declare_id!("BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V");
 
 // ======================================================
 // PDA SEEDS
@@ -18,6 +18,9 @@ pub const SEED_TRUE_MINT: &[u8] = b"true_mint";
 pub const SEED_FALSE_MINT: &[u8] = b"false_mint";
 pub const SEED_MINT_AUTH: &[u8] = b"mint_authority";
 pub const SEED_COLLATERAL_VAULT: &[u8] = b"collateral_vault";
+
+pub const REDEEM_FEE_BPS: u64 = 100; // 1.00%
+pub const BPS_DENOM: u64 = 10_000;
 
 #[inline(never)]
 fn create_system_pda_0space<'info>(
@@ -263,6 +266,105 @@ pub mod predictol_sc {
 
         Ok(())
     }
+
+
+    pub fn redeem_pair_while_active(ctx: Context<RedeemPairWhileActive>, amount: u64) -> Result<()> {
+        require!(amount > 0, PredictError::InvalidAmount);
+
+        // Must be during betting period ("pair redeem")
+        let now = Clock::get()?.unix_timestamp;
+        require!(now < ctx.accounts.event.bet_end_time, PredictError::BettingPeriodEnded);
+
+        // Additional check: the event should not be resolved
+        require!(!ctx.accounts.event.resolved, PredictError::EventAlreadyResolved);
+
+        // User wallet must have enough TRUE and FALSE to burn
+        require!(ctx.accounts.user_true_ata.amount >= amount, PredictError::InsufficientTrueBalance);
+        require!(ctx.accounts.user_false_ata.amount >= amount, PredictError::InsufficientFalseBalance);
+
+        // Burn TRUE tokens
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.true_mint.to_account_info(),
+                    from: ctx.accounts.user_true_ata.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        // Burn FALSE tokens
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.false_mint.to_account_info(),
+                    from: ctx.accounts.user_false_ata.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        // fee = 1% (100 bps)
+        let fee = amount
+            .checked_mul(REDEEM_FEE_BPS).ok_or(PredictError::MathOverflow)?
+            .checked_div(BPS_DENOM).ok_or(PredictError::MathOverflow)?;
+
+        let payout = amount.checked_sub(fee).ok_or(PredictError::MathOverflow)?;
+
+        // Identify the "zero-line"— the amount of money that must stay 
+        // in the account so it isn't deleted by the network.
+        //Fetches the current rent configuration from the Solana network
+        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
+
+        require!(
+            vault_lamports >= rent_min.saturating_add(payout),
+            PredictError::VaultInsufficientFunds
+        );
+
+        // Vault PDA signs the SOL transfer
+        let event_key = ctx.accounts.event.key();
+        let vault_bump = ctx.bumps.collateral_vault;
+        let vault_seeds: [&[u8]; 3] = [
+            SEED_COLLATERAL_VAULT,
+            event_key.as_ref(),
+            &[vault_bump],
+        ];
+
+        invoke_signed(
+            &system_instruction::transfer(
+                &ctx.accounts.collateral_vault.key(),
+                &ctx.accounts.user.key(),
+                payout,
+            ),
+            &[
+                ctx.accounts.collateral_vault.to_account_info(),
+                ctx.accounts.user.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[&vault_seeds],
+        )?;
+
+        // Accounting updates
+        // Keeps event state updated for later redemption stages
+        ctx.accounts.event.total_collateral_lamports = ctx.accounts.event
+            .total_collateral_lamports
+            .checked_sub(payout)
+            .ok_or(PredictError::MathOverflow)?;
+
+        ctx.accounts.event.total_issued_per_side = ctx.accounts.event
+            .total_issued_per_side
+            .checked_sub(amount)
+            .ok_or(PredictError::MathOverflow)?;
+
+        Ok(())
+    }
+
+
 }
 
 // ======================================================
@@ -387,6 +489,53 @@ pub struct MintPositions<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+#[derive(Accounts)]
+pub struct RedeemPairWhileActive<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(mut)]
+    pub event: Account<'info, Event>,
+
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key() @ PredictError::InvalidVault
+    )]
+    pub collateral_vault: SystemAccount<'info>,
+
+    #[account(
+        mut,
+        constraint = event.true_mint == true_mint.key() @ PredictError::InvalidMint
+    )]
+    pub true_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = event.false_mint == false_mint.key() @ PredictError::InvalidMint
+    )]
+    pub false_mint: Account<'info, Mint>,
+
+    #[account(
+        mut,
+        constraint = user_true_ata.owner == user.key() @ PredictError::InvalidTokenAccountOwner,
+        constraint = user_true_ata.mint == true_mint.key() @ PredictError::InvalidTokenAccountMint
+    )]
+    pub user_true_ata: Account<'info, TokenAccount>,
+
+    #[account(
+        mut,
+        constraint = user_false_ata.owner == user.key() @ PredictError::InvalidTokenAccountOwner,
+        constraint = user_false_ata.mint == false_mint.key() @ PredictError::InvalidTokenAccountMint
+    )]
+    pub user_false_ata: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
+
 
 // ======================================================
 // CPI HELPERS
@@ -430,4 +579,24 @@ pub enum PredictError {
     MathOverflow,
     #[msg("Invalid amount")]
     InvalidAmount,
+    #[msg("Betting period has ended")]
+    BettingPeriodEnded,
+    #[msg("Event already resolved")]
+    EventAlreadyResolved,
+    #[msg("Insufficient TRUE balance")]
+    InsufficientTrueBalance,
+    #[msg("Insufficient FALSE balance")]
+    InsufficientFalseBalance,
+    #[msg("Vault has insufficient funds")]
+    VaultInsufficientFunds,
+    #[msg("Invalid vault for this event")]
+    InvalidVault,
+    #[msg("Invalid mint for this event")]
+    InvalidMint,
+    #[msg("Invalid token account owner")]
+    InvalidTokenAccountOwner,
+    #[msg("Invalid token account mint")]
+    InvalidTokenAccountMint,
 }
+
+

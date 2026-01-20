@@ -3,7 +3,7 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-predictsol_sc = "BNn1nkWfB99z9b515Bk6aC5sDexX1Hf5BpfTL1zr7gtG"
+predictsol_sc = "BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V"
 
 [registry]
 url = "https://api.apr.dev"

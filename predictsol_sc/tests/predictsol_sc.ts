@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PredictolSc } from "../target/types/predictsol_sc";
+import { PredictolSc } from "../target/types/predictol_sc";
 
 describe("predictol_sc", () => {
   // Configure the client to use the local cluster.
