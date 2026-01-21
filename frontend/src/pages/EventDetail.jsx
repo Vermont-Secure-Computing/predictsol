@@ -16,9 +16,11 @@ import {
   findTrueMintPda,
   findFalseMintPda,
 } from "../lib/pdas";
-import { getProgram } from "../lib/anchorClient";
+
+import { getPredictProgram, getTruthProgram } from "../lib/anchorClient";
 
 import { sendAndConfirmSafe } from "../utils/sendTx";
+import { getConstants } from "../constants";
 
 function toBaseUnits(amountStr) {
   const n = Number(amountStr);
@@ -48,13 +50,28 @@ export default function EventDetail() {
   const [redeemErr, setRedeemErr] = useState("");
   const [redeemSig, setRedeemSig] = useState("");
 
-  // prevents double submit even before setState updates)
+  // truth network state
+  const [truthQ, setTruthQ] = useState(null);
+  const [truthLoading, setTruthLoading] = useState(false);
+
+  // finalize voting state
+  const [finalizing, setFinalizing] = useState(false);
+  const [finalizeErr, setFinalizeErr] = useState("");
+  const [finalizeSig, setFinalizeSig] = useState("");
+
+  // prevents double submit even before setState updates
   const buyLockRef = useRef(false);
   const redeemLockRef = useRef(false);
 
+  const constants = getConstants();
+
+  const now = Math.floor(Date.now() / 1000);
+  const bettingClosed = ev && now >= ev.betEndTime.toNumber();
+  //const bettingClosed = true;
+
   const program = useMemo(() => {
     if (!wallet?.publicKey || !wallet.connected) return null;
-    return getProgram(wallet);
+    return getPredictProgram(wallet);
   }, [wallet.publicKey, wallet.connected]);
 
   async function safeSimulate(conn, tx, label) {
@@ -90,36 +107,6 @@ export default function EventDetail() {
     throw last || new Error("simulateTransaction failed");
   }
 
-
-
-  // async function sendAndConfirm(tx, label) {
-  //   const conn = program.provider.connection;
-
-  //   tx.feePayer = wallet.publicKey;
-  //   const latest = await conn.getLatestBlockhash("finalized");
-  //   tx.recentBlockhash = latest.blockhash;
-
-  //   console.log(`[${label}] simulating...`);
-  //   await safeSimulate(conn, tx, label);
-
-  //   console.log(`[${label}] wallet sending...`);
-  //   const sig = await wallet.sendTransaction(tx, conn);
-
-  //   console.log(`[${label}] sig:`, sig);
-
-  //   await conn.confirmTransaction(
-  //     {
-  //       signature: sig,
-  //       blockhash: latest.blockhash,
-  //       lastValidBlockHeight: latest.lastValidBlockHeight,
-  //     },
-  //     "confirmed"
-  //   );
-
-  //   console.log(`[${label}] confirmed`);
-  //   return sig;
-  // }
-
   async function sendAndConfirm(tx, label) {
     const conn = program.provider.connection;
     return sendAndConfirmSafe({ conn, wallet, tx, label, simulate: safeSimulate });
@@ -133,13 +120,41 @@ export default function EventDetail() {
     try {
       const pk = new PublicKey(eventPda);
       const data = await program.account.event.fetch(pk);
-      setEv({ pk, ...data });
+
+      const merged = { pk, ...data };
+      setEv(merged);
+
+      //load truth question 
+      setTruthLoading(true)
+      try {
+        const q = await loadTruthQuestion(merged)
+        setTruthQ(q);
+      } catch (e) {
+
+      } finally {
+        setTruthLoading(false);
+      }
     } catch (e) {
       setErr(e?.message || String(e));
     } finally {
       setLoading(false);
     }
   }
+
+  // load truth network event details
+  async function loadTruthQuestion(evData) {
+    if (!wallet?.publicKey || !wallet.connected) return null;
+    const truthPk = evData?.truthQuestion;
+    if (!truthPk) return null;
+    
+    const zero = new PublicKey("11111111111111111111111111111111");
+    if (truthPk.toBase58() === zero.toBase58()) return null;
+
+    const truth = getTruthProgram(wallet);
+    const q = await truth.account.question.fetch(truthPk);
+    return q;
+  }
+
 
   useEffect(() => {
     if (!program || !eventPda) return;
@@ -375,6 +390,81 @@ export default function EventDetail() {
     }
   }
 
+
+  /**
+   * finalize voting helpers
+   */
+  function canGetResult(ev) {
+    if (!ev) return false;
+    const now = Math.floor(Date.now() / 1000);
+
+    // must be closed
+    const bettingClosed = now >= ev.betEndTime.toNumber();
+
+    // must not be resolved yet
+    const notResolved = !ev.resolved;
+
+    return bettingClosed && notResolved;
+  }
+
+  function truthRevealEnded(truthQ) {
+    if (!truthQ?.revealEndTime) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return now >= truthQ.revealEndTime.toNumber();
+  }
+
+
+  /**
+   * finalize voting handler
+   */
+  async function getResult() {
+    if (!program || !wallet?.publicKey) return;
+    setFinalizeErr("");
+    setFinalizeSig("");
+
+    if (!canGetResult(ev)) {
+      setFinalizeErr("Result is not available yet.");
+      return;
+    }
+
+    if (truthQ && !truthRevealEnded(truthQ)) {
+      setFinalizeErr("Truth Network reveal phase is still active. Please try again after reveal ends.");
+      return;
+    }
+
+    setFinalizing(true);
+    try {
+      const eventPk = new PublicKey(eventPda);
+
+      const truthQuestionPk = ev.truthQuestion;
+      if (!truthQuestionPk) throw new Error("This event is not linked to a Truth Network question.");
+
+      const tx = await program.methods
+        .fetchAndStoreWinner()
+        .accounts({
+          event: eventPk,
+          truthNetworkQuestion: truthQuestionPk,
+          truthNetworkProgram: constants.TRUTH_NETWORK_PROGRAM_ID,
+        })
+        .transaction();
+
+      const sig = await sendAndConfirm(tx, "fetchAndStoreWinner");
+      setFinalizeSig(sig);
+
+      await load();
+    } catch (e) {
+      console.error("[getResult] failed:", e);
+      if (typeof e?.getLogs === "function") {
+        try {
+          console.log("[getResult] logs:", await e.getLogs());
+        } catch {}
+      }
+      setFinalizeErr(e?.message || String(e));
+    } finally {
+      setFinalizing(false);
+    }
+  }
+
   if (!wallet.publicKey) return <p>Connect wallet.</p>;
   if (loading) return <p>Loading...</p>;
   if (err) return <p style={{ color: "crimson" }}>{err}</p>;
@@ -536,6 +626,13 @@ export default function EventDetail() {
         </div>
       )}
 
+      {bettingClosed && ev.resolved && (
+        <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 10, background: "#fafafa" }}>
+          <div style={{ fontWeight: 700 }}>Result already stored </div>
+        </div>
+      )}
+
+
       {/* Event info */}
       <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
         <div><b>PDA:</b> {ev.pk.toBase58()}</div>
@@ -565,6 +662,63 @@ export default function EventDetail() {
         <div><b>Resolved:</b> {String(ev.resolved)}</div>
         <div><b>Winning option:</b> {ev.winningOption?.toString?.()}</div>
       </div>
+
+      {/* Get Result UI */}
+      {canGetResult(ev) && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            border: "1px solid #ddd",
+            borderRadius: 10,
+            background: "#fafafa",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Get Result (Finalize Truth + Store Winner)</div>
+
+          <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+            This will call Truth Network <code>finalize_voting</code> and then store the winner in this event.
+            {truthLoading ? (
+              <span> (loading truth status...)</span>
+            ) : truthQ ? (
+              <span>
+                {" "}
+                Reveal ends: <b>{toDate(truthQ.revealEndTime)}</b>{" "}
+                {truthRevealEnded(truthQ) ? "✅" : "⏳"}
+              </span>
+            ) : (
+              <span> (no truth question loaded)</span>
+            )}
+          </div>
+
+          <button
+            onClick={getResult}
+            disabled={finalizing || loading || minting || redeeming}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: finalizing ? "#eee" : "#111",
+              color: finalizing ? "#111" : "#fff",
+              cursor: finalizing ? "not-allowed" : "pointer",
+            }}
+          >
+            {finalizing ? "Finalizing..." : "Get Result"}
+          </button>
+
+          {finalizeErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{finalizeErr}</div>}
+
+          {finalizeSig && (
+            <div style={{ marginTop: 10, fontSize: 13 }}>
+              <b>TX:</b>{" "}
+              <a href={`https://solscan.io/tx/${finalizeSig}?cluster=devnet`} target="_blank" rel="noreferrer">
+                {finalizeSig}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
     </div>
   );
 }

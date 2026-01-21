@@ -6,6 +6,19 @@ use anchor_lang::solana_program::program_pack::Pack;
 use anchor_spl::token::{self, Burn, InitializeMint, Mint, MintTo, Token, TokenAccount};
 use anchor_spl::token::spl_token;
 
+// Import the truth_network program
+declare_program!(truth_network);
+use truth_network::{ 
+    program::TruthNetwork,
+    cpi::accounts::FinalizeVoting,
+    cpi::accounts::DeleteExpiredQuestion,
+    cpi::finalize_voting,
+    cpi::delete_expired_question,
+};
+
+// Import the Truth-Network program
+use truth_network::accounts::Question;
+
 
 declare_id!("BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V");
 
@@ -365,6 +378,45 @@ pub mod predictol_sc {
     }
 
 
+    pub fn fetch_and_store_winner(ctx: Context<FetchAndStoreWinner>) -> Result<()> {
+        let ev = &mut ctx.accounts.event;
+        let q = &mut ctx.accounts.truth_network_question;
+
+        // Betting must be finished
+        let now = Clock::get()?.unix_timestamp;
+        require!(now >= ev.bet_end_time, PredictError::BettingStillActive);
+
+        // Don't allow calling twice
+        require!(!ev.resolved, PredictError::EventAlreadyResolved);
+        require_keys_eq!(ev.truth_question, q.key(), PredictError::TruthQuestionMismatch);
+
+        require!(now >= q.reveal_end_time, PredictError::TruthVotingStillActive);
+
+        // CPI: finalize voting on Truth Network
+        let question_id = q.id;
+        let cpi_accounts = FinalizeVoting {
+            question: q.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(
+            ctx.accounts.truth_network_program.to_account_info(),
+            cpi_accounts,
+        );
+
+        finalize_voting(cpi_ctx, question_id)?;
+
+        // Refresh the account after CPI
+        q.reload()?;
+
+        // Store result into PredictSol event
+        ev.winning_option = q.winning_option;
+        ev.resolved = q.finalized;
+    
+        // ev.winning_percent = q.winning_percent;
+
+        Ok(())
+    }
+
+
 }
 
 // ======================================================
@@ -536,6 +588,20 @@ pub struct RedeemPairWhileActive<'info> {
 }
 
 
+#[derive(Accounts)]
+pub struct FetchAndStoreWinner<'info> {
+    #[account(mut)]
+    pub event: Account<'info, Event>,
+
+    // Truth Network question account
+    #[account(mut)]
+    pub truth_network_question: Account<'info, Question>,
+
+    pub truth_network_program: Program<'info, TruthNetwork>,
+}
+
+
+
 
 // ======================================================
 // CPI HELPERS
@@ -597,6 +663,12 @@ pub enum PredictError {
     InvalidTokenAccountOwner,
     #[msg("Invalid token account mint")]
     InvalidTokenAccountMint,
+    #[msg("Betting is still active")]
+    BettingStillActive,
+    #[msg("Truth question mismatch")]
+    TruthQuestionMismatch,
+    #[msg("Truth voting is still active")]
+    TruthVotingStillActive,
 }
 
 

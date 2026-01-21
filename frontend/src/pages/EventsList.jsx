@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { getProgram } from "../lib/anchorClient";
+import { getPredictProgram } from "../lib/anchorClient";
 import { Link } from "react-router-dom";
 
 export default function EventsList() {
@@ -11,7 +11,7 @@ export default function EventsList() {
 
   const program = useMemo(() => {
     if (!wallet?.publicKey || !wallet.connected) return null;
-    return getProgram(wallet);
+    return getPredictProgram(wallet);
   }, [wallet.publicKey, wallet.connected]);
 
   async function loadEvents() {
