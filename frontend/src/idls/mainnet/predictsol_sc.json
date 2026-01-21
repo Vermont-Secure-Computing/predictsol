@@ -1,0 +1,720 @@
+{
+  "address": "BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V",
+  "metadata": {
+    "name": "predictol_sc",
+    "version": "0.1.0",
+    "spec": "0.1.0"
+  },
+  "instructions": [
+    {
+      "name": "create_event_core",
+      "discriminator": [
+        36,
+        78,
+        22,
+        177,
+        48,
+        83,
+        148,
+        26
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "counter",
+          "writable": true
+        },
+        {
+          "name": "event",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  118,
+                  101,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              },
+              {
+                "kind": "account",
+                "path": "counter.count",
+                "account": "EventCounter"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "title",
+          "type": "string"
+        },
+        {
+          "name": "bet_end_time",
+          "type": "i64"
+        },
+        {
+          "name": "commit_end_time",
+          "type": "i64"
+        },
+        {
+          "name": "reveal_end_time",
+          "type": "i64"
+        },
+        {
+          "name": "truth_question",
+          "type": {
+            "option": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "create_event_mints",
+      "discriminator": [
+        217,
+        108,
+        246,
+        77,
+        157,
+        240,
+        202,
+        243
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "mint_authority",
+          "docs": [
+            "No data is read from this account; we only use it as a program-derived signer."
+          ],
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "true_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  116,
+                  114,
+                  117,
+                  101,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "false_mint",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  102,
+                  97,
+                  108,
+                  115,
+                  101,
+                  95,
+                  109,
+                  105,
+                  110,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        },
+        {
+          "name": "rent",
+          "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "deposit_collateral",
+      "discriminator": [
+        156,
+        131,
+        142,
+        116,
+        146,
+        247,
+        162,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "initialize_event_counter",
+      "discriminator": [
+        15,
+        48,
+        168,
+        169,
+        41,
+        14,
+        197,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "counter",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "mint_positions",
+      "discriminator": [
+        67,
+        27,
+        94,
+        189,
+        44,
+        218,
+        57,
+        95
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "mint_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "true_mint",
+          "writable": true
+        },
+        {
+          "name": "false_mint",
+          "writable": true
+        },
+        {
+          "name": "user_true_ata",
+          "writable": true
+        },
+        {
+          "name": "user_false_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "redeem_pair_while_active",
+      "discriminator": [
+        255,
+        73,
+        249,
+        195,
+        122,
+        179,
+        73,
+        171
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "true_mint",
+          "writable": true
+        },
+        {
+          "name": "false_mint",
+          "writable": true
+        },
+        {
+          "name": "user_true_ata",
+          "writable": true
+        },
+        {
+          "name": "user_false_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Event",
+      "discriminator": [
+        125,
+        192,
+        125,
+        158,
+        9,
+        115,
+        152,
+        233
+      ]
+    },
+    {
+      "name": "EventCounter",
+      "discriminator": [
+        194,
+        144,
+        61,
+        168,
+        20,
+        187,
+        102,
+        249
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidTitleLength",
+      "msg": "Invalid title length"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidBetEndTime",
+      "msg": "Invalid bet end time"
+    },
+    {
+      "code": 6002,
+      "name": "InvalidTimeOrder",
+      "msg": "Invalid time order"
+    },
+    {
+      "code": 6003,
+      "name": "MathOverflow",
+      "msg": "Math overflow"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
+    },
+    {
+      "code": 6005,
+      "name": "BettingPeriodEnded",
+      "msg": "Betting period has ended"
+    },
+    {
+      "code": 6006,
+      "name": "EventAlreadyResolved",
+      "msg": "Event already resolved"
+    },
+    {
+      "code": 6007,
+      "name": "InsufficientTrueBalance",
+      "msg": "Insufficient TRUE balance"
+    },
+    {
+      "code": 6008,
+      "name": "InsufficientFalseBalance",
+      "msg": "Insufficient FALSE balance"
+    },
+    {
+      "code": 6009,
+      "name": "VaultInsufficientFunds",
+      "msg": "Vault has insufficient funds"
+    },
+    {
+      "code": 6010,
+      "name": "InvalidVault",
+      "msg": "Invalid vault for this event"
+    },
+    {
+      "code": 6011,
+      "name": "InvalidMint",
+      "msg": "Invalid mint for this event"
+    },
+    {
+      "code": 6012,
+      "name": "InvalidTokenAccountOwner",
+      "msg": "Invalid token account owner"
+    },
+    {
+      "code": 6013,
+      "name": "InvalidTokenAccountMint",
+      "msg": "Invalid token account mint"
+    }
+  ],
+  "types": [
+    {
+      "name": "Event",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "event_id",
+            "type": "u64"
+          },
+          {
+            "name": "truth_question",
+            "type": "pubkey"
+          },
+          {
+            "name": "title",
+            "type": "string"
+          },
+          {
+            "name": "bet_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "commit_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "reveal_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "total_collateral_lamports",
+            "type": "u64"
+          },
+          {
+            "name": "total_issued_per_side",
+            "type": "u64"
+          },
+          {
+            "name": "collateral_vault",
+            "type": "pubkey"
+          },
+          {
+            "name": "true_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "false_mint",
+            "type": "pubkey"
+          },
+          {
+            "name": "resolved",
+            "type": "bool"
+          },
+          {
+            "name": "winning_option",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "EventCounter",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "count",
+            "type": "u64"
+          }
+        ]
+      }
+    }
+  ]
+}
