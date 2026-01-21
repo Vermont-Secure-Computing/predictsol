@@ -18,9 +18,11 @@ import {
 } from "../lib/pdas";
 
 import { getPredictProgram, getTruthProgram } from "../lib/anchorClient";
+import { getPredictReadonlyProgram, getTruthReadonlyProgram } from "../lib/anchorReadOnly";
 
 import { sendAndConfirmSafe } from "../utils/sendTx";
 import { getConstants } from "../constants";
+import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 
 function toBaseUnits(amountStr) {
   const n = Number(amountStr);
@@ -63,6 +65,8 @@ export default function EventDetail() {
   const buyLockRef = useRef(false);
   const redeemLockRef = useRef(false);
 
+  const walletConnected = !!wallet?.publicKey && wallet.connected;
+
   const constants = getConstants();
 
   const now = Math.floor(Date.now() / 1000);
@@ -70,9 +74,12 @@ export default function EventDetail() {
   //const bettingClosed = true;
 
   const program = useMemo(() => {
-    if (!wallet?.publicKey || !wallet.connected) return null;
-    return getPredictProgram(wallet);
+    return walletConnected ? getPredictProgram(wallet) : getPredictReadonlyProgram();
   }, [wallet.publicKey, wallet.connected]);
+
+  const truthProgram = useMemo(() => {
+    return walletConnected ? getTruthProgram(wallet) : getTruthReadonlyProgram();
+  })
 
   async function safeSimulate(conn, tx, label) {
     const tries = [
@@ -108,6 +115,7 @@ export default function EventDetail() {
   }
 
   async function sendAndConfirm(tx, label) {
+    if (!walletConnected) throw new Error("Connect wallet to perform this action.");
     const conn = program.provider.connection;
     return sendAndConfirmSafe({ conn, wallet, tx, label, simulate: safeSimulate });
   }
@@ -130,7 +138,7 @@ export default function EventDetail() {
         const q = await loadTruthQuestion(merged)
         setTruthQ(q);
       } catch (e) {
-
+        setTruthQ(null);
       } finally {
         setTruthLoading(false);
       }
@@ -150,8 +158,7 @@ export default function EventDetail() {
     const zero = new PublicKey("11111111111111111111111111111111");
     if (truthPk.toBase58() === zero.toBase58()) return null;
 
-    const truth = getTruthProgram(wallet);
-    const q = await truth.account.question.fetch(truthPk);
+    const q = await truthProgram.account.question.fetch(truthPk);
     return q;
   }
 
@@ -174,6 +181,7 @@ export default function EventDetail() {
   }
 
   async function ensureAta(mint, owner) {
+    if (!walletConnected) throw new Error("Connect wallet to ceate ATA.")
     const ata = getAssociatedTokenAddressSync(
       mint,
       owner,
@@ -203,7 +211,8 @@ export default function EventDetail() {
   }
 
   async function buyTokens(solAmountStr) {
-    if (!program || !wallet?.publicKey) return;
+    if (!walletConnected) return setMintErr("Connect wallet to buy.");
+    if (!program) return;
     if (buyLockRef.current) return;
     buyLockRef.current = true;
 
@@ -297,7 +306,8 @@ export default function EventDetail() {
 
   async function redeemPairWhileActive(redeemAmountStr) {
 
-    if (!program || !wallet?.publicKey) return;
+    if (!walletConnected) return setRedeemErr("Connect wallet to redeem.");
+    if (!program) return;
     if (redeemLockRef.current) return;
     redeemLockRef.current = true;
 
@@ -418,7 +428,10 @@ export default function EventDetail() {
    * finalize voting handler
    */
   async function getResult() {
-    if (!program || !wallet?.publicKey) return;
+    if (!walletConnected) {
+      setFinalizeErr("Connect wallet to finalize and store the result.");
+      return;
+    }
     setFinalizeErr("");
     setFinalizeSig("");
 
@@ -439,6 +452,9 @@ export default function EventDetail() {
       const truthQuestionPk = ev.truthQuestion;
       if (!truthQuestionPk) throw new Error("This event is not linked to a Truth Network question.");
 
+      const truthId = truthQ?.id?.toNumber?.() ?? null;
+      if (truthId === null) throw new Error("Truth question id is missing. Load truth question first.");
+
       const tx = await program.methods
         .fetchAndStoreWinner()
         .accounts({
@@ -454,18 +470,12 @@ export default function EventDetail() {
       await load();
     } catch (e) {
       console.error("[getResult] failed:", e);
-      if (typeof e?.getLogs === "function") {
-        try {
-          console.log("[getResult] logs:", await e.getLogs());
-        } catch {}
-      }
       setFinalizeErr(e?.message || String(e));
     } finally {
       setFinalizing(false);
     }
   }
 
-  if (!wallet.publicKey) return <p>Connect wallet.</p>;
   if (loading) return <p>Loading...</p>;
   if (err) return <p style={{ color: "crimson" }}>{err}</p>;
   if (!ev) return null;
@@ -476,9 +486,16 @@ export default function EventDetail() {
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2 style={{ margin: 0 }}>Event Detail</h2>
-        <button onClick={load} disabled={loading || minting || redeeming}>
-          {loading ? "Refreshing..." : "Refresh"}
-        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {!walletConnected && (
+            <span style={{ fontSize: 12, opacity: 0.75 }}>
+              Read-only mode (connect wallet to interact)
+            </span>
+          )}
+          <button onClick={load} disabled={loading || minting || redeeming || finalizing}>
+            {loading ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* Buy Tokens UI */}
@@ -517,13 +534,13 @@ export default function EventDetail() {
                 outline: "none",
               }}
               inputMode="decimal"
-              disabled={!bettingActive}
+              disabled={!bettingActive || !walletConnected}
             />
           </div>
 
           <button
             onClick={() => buyTokens(solAmount)}
-            disabled={!bettingActive || minting || loading || redeeming}
+            disabled={!walletConnected || !bettingActive || minting || loading || redeeming}
             style={{
               marginTop: 18,
               padding: "10px 14px",
@@ -541,6 +558,12 @@ export default function EventDetail() {
             Expected: 1 SOL → 1 TRUE + 1 FALSE
           </div>
         </div>
+
+        {!walletConnected && (
+          <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+            Connect wallet to buy.
+          </div>
+        )}
 
         {mintErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{mintErr}</div>}
 
@@ -588,6 +611,7 @@ export default function EventDetail() {
                   outline: "none",
                 }}
                 inputMode="decimal"
+                disabled={!walletConnected}
               />
             </div>
 
@@ -612,6 +636,13 @@ export default function EventDetail() {
               You burn {redeemAmount || "0"} TRUE and {redeemAmount || "0"} FALSE
             </div>
           </div>
+
+          {!walletConnected && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+              Connect wallet to redeem.
+            </div>
+          )}
+
 
           {redeemErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{redeemErr}</div>}
 
@@ -693,7 +724,7 @@ export default function EventDetail() {
 
           <button
             onClick={getResult}
-            disabled={finalizing || loading || minting || redeeming}
+            disabled={!walletConnected || finalizing || loading || minting || redeeming}
             style={{
               padding: "10px 14px",
               borderRadius: 10,
@@ -705,6 +736,12 @@ export default function EventDetail() {
           >
             {finalizing ? "Finalizing..." : "Get Result"}
           </button>
+
+          {!walletConnected && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+              Connect wallet to finalize and store result.
+            </div>
+          )}
 
           {finalizeErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{finalizeErr}</div>}
 

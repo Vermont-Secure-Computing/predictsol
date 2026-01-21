@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { getPredictProgram } from "../lib/anchorClient";
 import { Link } from "react-router-dom";
+
+import { getPredictProgram } from "../lib/anchorClient";
+import { getPredictReadonlyProgram } from "../lib/anchorReadOnly";
 
 export default function EventsList() {
   const wallet = useWallet();
@@ -10,8 +12,8 @@ export default function EventsList() {
   const [err, setErr] = useState("");
 
   const program = useMemo(() => {
-    if (!wallet?.publicKey || !wallet.connected) return null;
-    return getPredictProgram(wallet);
+    if (wallet?.publicKey && wallet.connected) return getPredictProgram(wallet);
+    return getPredictReadonlyProgram();
   }, [wallet.publicKey, wallet.connected]);
 
   async function loadEvents() {
@@ -40,18 +42,19 @@ export default function EventsList() {
     <div>
       <h2>Events</h2>
 
-      {!wallet.publicKey && (
-        <p>Connect your wallet to load events.</p>
-      )}
-
-      {wallet.publicKey && (
-        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <button onClick={loadEvents} disabled={loading}>
-            {loading ? "Loading..." : "Refresh"}
-          </button>
-          {err && <span style={{ color: "crimson" }}>{err}</span>}
-        </div>
-      )}
+      
+      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        <button onClick={loadEvents} disabled={loading}>
+          {loading ? "Loading..." : "Refresh"}
+        </button>
+        {err && <span style={{ color: "crimson" }}>{err}</span>}
+        {!wallet.publicKey && (
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            Viewing in read-only mode (connect wallet to interact).
+          </span>
+        )}
+      </div>
+      
 
       <div style={{ marginTop: 16 }}>
         {events.length === 0 && wallet.publicKey && !loading && <p>No events found.</p>}
