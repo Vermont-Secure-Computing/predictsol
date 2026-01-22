@@ -1,5 +1,5 @@
 {
-  "address": "BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V",
+  "address": "E9o834tLQRWpscJNMSq3C4wUyoXPwymAS3ZDfjuK9tpu",
   "metadata": {
     "name": "predictol_sc",
     "version": "0.1.0",
@@ -109,9 +109,6 @@
         },
         {
           "name": "mint_authority",
-          "docs": [
-            "No data is read from this account; we only use it as a program-derived signer."
-          ],
           "pda": {
             "seeds": [
               {
@@ -227,6 +224,208 @@
           }
         },
         {
+          "name": "metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+        },
+        {
+          "name": "true_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  11,
+                  112,
+                  101,
+                  177,
+                  227,
+                  209,
+                  124,
+                  69,
+                  56,
+                  157,
+                  82,
+                  127,
+                  107,
+                  4,
+                  195,
+                  205,
+                  88,
+                  184,
+                  108,
+                  115,
+                  26,
+                  160,
+                  253,
+                  181,
+                  73,
+                  182,
+                  209,
+                  188,
+                  3,
+                  248,
+                  41,
+                  70
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "true_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                11,
+                112,
+                101,
+                177,
+                227,
+                209,
+                124,
+                69,
+                56,
+                157,
+                82,
+                127,
+                107,
+                4,
+                195,
+                205,
+                88,
+                184,
+                108,
+                115,
+                26,
+                160,
+                253,
+                181,
+                73,
+                182,
+                209,
+                188,
+                3,
+                248,
+                41,
+                70
+              ]
+            }
+          }
+        },
+        {
+          "name": "false_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  11,
+                  112,
+                  101,
+                  177,
+                  227,
+                  209,
+                  124,
+                  69,
+                  56,
+                  157,
+                  82,
+                  127,
+                  107,
+                  4,
+                  195,
+                  205,
+                  88,
+                  184,
+                  108,
+                  115,
+                  26,
+                  160,
+                  253,
+                  181,
+                  73,
+                  182,
+                  209,
+                  188,
+                  3,
+                  248,
+                  41,
+                  70
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "false_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                11,
+                112,
+                101,
+                177,
+                227,
+                209,
+                124,
+                69,
+                56,
+                157,
+                82,
+                127,
+                107,
+                4,
+                195,
+                205,
+                88,
+                184,
+                108,
+                115,
+                26,
+                160,
+                253,
+                181,
+                73,
+                182,
+                209,
+                188,
+                3,
+                248,
+                41,
+                70
+              ]
+            }
+          }
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -307,6 +506,34 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "fetch_and_store_winner",
+      "discriminator": [
+        95,
+        179,
+        39,
+        9,
+        120,
+        215,
+        130,
+        21
+      ],
+      "accounts": [
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "truth_network_question",
+          "writable": true
+        },
+        {
+          "name": "truth_network_program",
+          "address": "31wdq6EJgHKRjZotAjc6vkuJ7aRyQPauwmgadPiEm8EY"
+        }
+      ],
+      "args": []
     },
     {
       "name": "initialize_event_counter",
@@ -557,6 +784,19 @@
         102,
         249
       ]
+    },
+    {
+      "name": "Question",
+      "discriminator": [
+        111,
+        22,
+        150,
+        220,
+        181,
+        122,
+        118,
+        127
+      ]
     }
   ],
   "errors": [
@@ -629,6 +869,21 @@
       "code": 6013,
       "name": "InvalidTokenAccountMint",
       "msg": "Invalid token account mint"
+    },
+    {
+      "code": 6014,
+      "name": "BettingStillActive",
+      "msg": "Betting is still active"
+    },
+    {
+      "code": 6015,
+      "name": "TruthQuestionMismatch",
+      "msg": "Truth question mismatch"
+    },
+    {
+      "code": 6016,
+      "name": "TruthVotingStillActive",
+      "msg": "Truth voting is still active"
     }
   ],
   "types": [
@@ -712,6 +967,138 @@
           {
             "name": "count",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Question",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "asker",
+            "type": "pubkey"
+          },
+          {
+            "name": "question_key",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_address",
+            "type": "pubkey"
+          },
+          {
+            "name": "question_text",
+            "type": "string"
+          },
+          {
+            "name": "option_1",
+            "type": "string"
+          },
+          {
+            "name": "option_2",
+            "type": "string"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "commit_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "reveal_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "votes_option_1",
+            "type": "u64"
+          },
+          {
+            "name": "votes_option_2",
+            "type": "u64"
+          },
+          {
+            "name": "finalized",
+            "type": "bool"
+          },
+          {
+            "name": "committed_voters",
+            "type": "u64"
+          },
+          {
+            "name": "revealed_voters_count",
+            "type": "u64"
+          },
+          {
+            "name": "eligible_voters",
+            "type": "u64"
+          },
+          {
+            "name": "winning_option",
+            "type": "u8"
+          },
+          {
+            "name": "winning_percent",
+            "type": "f64"
+          },
+          {
+            "name": "reward_fee_taken",
+            "type": "bool"
+          },
+          {
+            "name": "snapshot_reward",
+            "type": "u64"
+          },
+          {
+            "name": "original_reward",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_remainder_count",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_total_weight",
+            "type": "u64"
+          },
+          {
+            "name": "total_distributed",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_voters_count",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_weight",
+            "type": "u64"
+          },
+          {
+            "name": "voter_records_count",
+            "type": "u64"
+          },
+          {
+            "name": "voter_records_closed",
+            "type": "u64"
+          },
+          {
+            "name": "reward_drained",
+            "type": "bool"
+          },
+          {
+            "name": "action_in_progress",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }

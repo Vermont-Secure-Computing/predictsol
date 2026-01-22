@@ -1,26 +1,28 @@
 use anchor_lang::prelude::*;
-use anchor_lang::prelude::SolanaSysvar;
-use anchor_lang::solana_program::{program::invoke_signed, system_instruction};
-use anchor_lang::solana_program::program_pack::Pack;
+use anchor_lang::prelude::pubkey;
+use anchor_lang::solana_program::{ instruction::{AccountMeta, Instruction}, program::invoke_signed, program_pack::Pack, system_instruction};
 
 use anchor_spl::token::{self, Burn, InitializeMint, Mint, MintTo, Token, TokenAccount};
 use anchor_spl::token::spl_token;
+
+// for metadata
+pub const METADATA_PROGRAM_ID: Pubkey = pubkey!("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
 // Import the truth_network program
 declare_program!(truth_network);
 use truth_network::{ 
     program::TruthNetwork,
     cpi::accounts::FinalizeVoting,
-    cpi::accounts::DeleteExpiredQuestion,
+    //cpi::accounts::DeleteExpiredQuestion, to be used later
     cpi::finalize_voting,
-    cpi::delete_expired_question,
+    //cpi::delete_expired_question, to be used later
 };
 
 // Import the Truth-Network program
 use truth_network::accounts::Question;
 
 
-declare_id!("BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V");
+declare_id!("E9o834tLQRWpscJNMSq3C4wUyoXPwymAS3ZDfjuK9tpu");
 
 // ======================================================
 // PDA SEEDS
@@ -34,6 +36,7 @@ pub const SEED_COLLATERAL_VAULT: &[u8] = b"collateral_vault";
 
 pub const REDEEM_FEE_BPS: u64 = 100; // 1.00%
 pub const BPS_DENOM: u64 = 10_000;
+
 
 #[inline(never)]
 fn create_system_pda_0space<'info>(
@@ -108,6 +111,104 @@ fn create_and_init_spl_mint_pda<'info>(
     Ok(())
 }
 
+// metadata helper - title prefix
+fn short_prefix(title: &str) -> String {
+    title
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .take(5)
+        .collect()
+}
+
+const IX_CREATE_METADATA_ACCOUNT_V3: u8 = 33;
+
+fn ix_create_metadata_account_v3(
+    metadata: Pubkey,
+    mint: Pubkey,
+    mint_authority: Pubkey,
+    payer: Pubkey,
+    update_authority: Pubkey,
+    data: DataV2,
+    is_mutable: bool,
+) -> Result<Instruction> {
+    let args = CreateMetadataAccountArgsV3 {
+        data,
+        is_mutable,
+        collection_details: None,
+    };
+
+    let mut ix_data = vec![IX_CREATE_METADATA_ACCOUNT_V3];
+    ix_data.extend_from_slice(&args.try_to_vec()?);
+
+    let accounts = vec![
+        AccountMeta::new(metadata, false),                 
+        AccountMeta::new_readonly(mint, false),          
+        AccountMeta::new_readonly(mint_authority, true),   
+        AccountMeta::new(payer, true),                   
+        AccountMeta::new_readonly(update_authority, true), 
+        AccountMeta::new_readonly(system_program::ID, false),
+        AccountMeta::new_readonly(sysvar::rent::ID, false),
+    ];
+
+    Ok(Instruction {
+        program_id: METADATA_PROGRAM_ID,
+        accounts,
+        data: ix_data,
+    })
+}
+
+
+// Borsh / Anchor-serialize structs
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct Creator {
+    pub address: Pubkey,
+    pub verified: bool,
+    pub share: u8,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct Collection {
+    pub verified: bool,
+    pub key: Pubkey,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub enum UseMethod {
+    Burn,
+    Multiple,
+    Single,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct Uses {
+    pub use_method: UseMethod,
+    pub remaining: u64,
+    pub total: u64,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct DataV2 {
+    pub name: String,
+    pub symbol: String,
+    pub uri: String,
+    pub seller_fee_basis_points: u16,
+    pub creators: Option<Vec<Creator>>,
+    pub collection: Option<Collection>,
+    pub uses: Option<Uses>,
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub enum CollectionDetails {
+    V1 { size: u64 },
+}
+
+#[derive(AnchorSerialize, AnchorDeserialize, Clone)]
+pub struct CreateMetadataAccountArgsV3 {
+    pub data: DataV2,
+    pub is_mutable: bool,
+    pub collection_details: Option<CollectionDetails>,
+}
+
 // ======================================================
 // PROGRAM
 // ======================================================
@@ -159,8 +260,8 @@ pub mod predictol_sc {
     }
 
     pub fn create_event_mints(ctx: Context<CreateEventMints>) -> Result<()> {
-        let event_key = ctx.accounts.event.key();
 
+        let event_key = ctx.accounts.event.key();
         let payer_ai = ctx.accounts.creator.to_account_info();
         let system_ai = ctx.accounts.system_program.to_account_info();
         let token_ai = ctx.accounts.token_program.to_account_info();
@@ -216,6 +317,104 @@ pub mod predictol_sc {
             9,
         )?;
 
+        // ---------- Create Metadata for TRUE ----------
+        let prefix = short_prefix(&ctx.accounts.event.title);
+        let true_name = format!("{}-TRUE", prefix);
+        let false_name = format!("{}-FALSE", prefix);
+
+        let true_symbol = "TRUE".to_string();
+        let false_symbol = "FALSE".to_string();
+
+        let uri = "".to_string(); // blank for now
+
+        let true_metadata = ctx.accounts.true_metadata.key();
+        let false_metadata = ctx.accounts.false_metadata.key();
+
+
+        // signer seeds for mint authority
+        let auth_bump = ctx.bumps.mint_authority;
+        let auth_seeds = &[
+            SEED_MINT_AUTH,
+            event_key.as_ref(),
+            &[auth_bump],
+        ];
+        let signer = &[&auth_seeds[..]];
+
+        // Build metadata struct
+        let true_data = DataV2 {
+            name: true_name,
+            symbol: true_symbol,
+            uri: uri.clone(),
+            seller_fee_basis_points: 0,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
+
+        let false_data = DataV2 {
+            name: false_name,
+            symbol: false_symbol,
+            uri,
+            seller_fee_basis_points: 0,
+            creators: None,
+            collection: None,
+            uses: None,
+        };
+
+        // TRUE metadata CPI
+        let ix = ix_create_metadata_account_v3(
+            true_metadata,
+            ctx.accounts.true_mint.key(),
+            ctx.accounts.mint_authority.key(),
+            ctx.accounts.creator.key(),
+            ctx.accounts.mint_authority.key(), // update authority = same PDA
+            true_data,
+            true, // is_mutable
+        )?;
+
+        invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.metadata_program.to_account_info(),
+                ctx.accounts.true_metadata.to_account_info(),
+                ctx.accounts.true_mint.to_account_info(),
+                ctx.accounts.mint_authority.to_account_info(),
+                ctx.accounts.creator.to_account_info(),
+                ctx.accounts.mint_authority.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.rent.to_account_info(),
+            ],
+            signer,
+        )?;
+
+
+        // FALSE metadata CPI
+        let ix = ix_create_metadata_account_v3(
+            false_metadata,
+            ctx.accounts.false_mint.key(),
+            ctx.accounts.mint_authority.key(),
+            ctx.accounts.creator.key(),
+            ctx.accounts.mint_authority.key(),
+            false_data,
+            true, // is_mutable
+        )?;
+
+        invoke_signed(
+            &ix,
+            &[
+                ctx.accounts.metadata_program.to_account_info(),
+                ctx.accounts.false_metadata.to_account_info(),
+                ctx.accounts.false_mint.to_account_info(),
+                ctx.accounts.mint_authority.to_account_info(),
+                ctx.accounts.creator.to_account_info(),
+                ctx.accounts.mint_authority.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+                ctx.accounts.rent.to_account_info(),
+            ],
+            signer,
+        )?;
+
+
         // 4) Save addresses to event
         let ev = &mut ctx.accounts.event;
         ev.collateral_vault = ctx.accounts.collateral_vault.key();
@@ -228,7 +427,7 @@ pub mod predictol_sc {
     pub fn deposit_collateral(ctx: Context<DepositCollateral>, lamports: u64) -> Result<()> {
         require!(lamports > 0, PredictError::InvalidAmount);
 
-        // Move lamports using System Program (you cannot mutate user lamports directly)
+        // Move lamports using System Program
         let ix = anchor_lang::solana_program::system_instruction::transfer(
             &ctx.accounts.user.key(),
             &ctx.accounts.collateral_vault.key(),
@@ -330,7 +529,7 @@ pub mod predictol_sc {
 
         // Identify the "zero-line"— the amount of money that must stay 
         // in the account so it isn't deleted by the network.
-        //Fetches the current rent configuration from the Solana network
+        // Fetches the current rent configuration from the Solana network
         let rent_min = Rent::get()?.minimum_balance(0) as u64;
         let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
 
@@ -478,22 +677,34 @@ pub struct CreateEventMints<'info> {
     #[account(mut)]
     pub event: Account<'info, Event>,
 
-    /// CHECK: This is a PDA that only acts as the mint authority signer.
-    /// No data is read from this account; we only use it as a program-derived signer.
+    /// CHECK: PDA signer
     #[account(seeds = [SEED_MINT_AUTH, event.key().as_ref()], bump)]
     pub mint_authority: UncheckedAccount<'info>,
 
-    /// CHECK: PDA mint account created & initialized in `create_event_mints`.
+    /// CHECK: PDA true mint account
     #[account(mut, seeds = [SEED_TRUE_MINT, event.key().as_ref()], bump)]
     pub true_mint: UncheckedAccount<'info>,
 
-    /// CHECK: PDA mint account created & initialized in `create_event_mints`.
+    /// CHECK: PDA false mint
     #[account(mut, seeds = [SEED_FALSE_MINT, event.key().as_ref()], bump)]
     pub false_mint: UncheckedAccount<'info>,
 
-    /// CHECK: PDA system account created in `create_event_mints` (system-owned, space=0).
+    /// CHECK: PDA system account
     #[account(mut, seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()], bump)]
     pub collateral_vault: UncheckedAccount<'info>,
+
+    /// CHECK: Metaplex Toke Metadata program
+    #[account(address = METADATA_PROGRAM_ID)]
+    pub metadata_program: UncheckedAccount<'info>,
+
+    /// CHECK: Metaplex metadata PDA for TRUE mint
+    #[account(mut, seeds = [b"metadata", METADATA_PROGRAM_ID.as_ref(), true_mint.key().as_ref()], bump, seeds::program = METADATA_PROGRAM_ID)]
+    pub true_metadata: UncheckedAccount<'info>,
+
+    /// CHECK: Metaplex metadata PDA for FALSE mint
+    #[account(mut, seeds = [b"metadata", METADATA_PROGRAM_ID.as_ref(), false_mint.key().as_ref()], bump, seeds::program = METADATA_PROGRAM_ID )]
+    pub false_metadata: UncheckedAccount<'info>,
+
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -526,7 +737,7 @@ pub struct MintPositions<'info> {
     #[account(mut)]
     pub event: Account<'info, Event>,
 
-    /// CHECK: PDA mint authority signer; seeds constraint enforces the address.
+    /// CHECK: PDA mint authority signer
     #[account(seeds = [SEED_MINT_AUTH, event.key().as_ref()], bump)]
     pub mint_authority: UncheckedAccount<'info>,
 
@@ -599,8 +810,6 @@ pub struct FetchAndStoreWinner<'info> {
 
     pub truth_network_program: Program<'info, TruthNetwork>,
 }
-
-
 
 
 // ======================================================
