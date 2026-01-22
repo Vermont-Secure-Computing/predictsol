@@ -256,6 +256,18 @@ export default function CreateEvent() {
       console.log("[createEvent] falseMint:", falseMint.toBase58());
 
       // TX #2: create_event_mints
+      const metadataProgram = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+      const [trueMetadata] = PublicKey.findProgramAddressSync(
+        [Buffer.from("metadata"), metadataProgram.toBuffer(), trueMint.toBuffer()],
+        metadataProgram
+      );
+
+      const [falseMetadata] = PublicKey.findProgramAddressSync(
+        [Buffer.from("metadata"), metadataProgram.toBuffer(), falseMint.toBuffer()],
+        metadataProgram
+      );
+
       const tx2 = await program.methods
         .createEventMints()
         .accounts({
@@ -265,6 +277,9 @@ export default function CreateEvent() {
           trueMint,
           falseMint,
           collateralVault,
+          metadataProgram,
+          trueMetadata,
+          falseMetadata,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
@@ -272,6 +287,7 @@ export default function CreateEvent() {
         .transaction();
 
       const sig2 = await sendAndConfirm(tx2, "createEventMints");
+      console.log(sig2)
 
       setMsg(`Event created!\ncore tx: ${sig1}\nmints tx: ${sig2}`);
       nav(`/event/${eventPda.toBase58()}`);
