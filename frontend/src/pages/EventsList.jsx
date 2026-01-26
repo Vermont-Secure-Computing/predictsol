@@ -70,12 +70,12 @@ export default function EventsList() {
               <div style={{ fontSize: 12, opacity: 0.8 }}>
                 Creator: {ev.creator.toBase58()}
               </div>
-              <div style={{ fontSize: 12, opacity: 0.8 }}>
+              {/* <div style={{ fontSize: 12, opacity: 0.8 }}>
                 event_id: {ev.eventId?.toString?.() ?? "?"}
-              </div>
+              </div> */}
 
               <div style={{ marginTop: 8 }}>
-                <Link to={`/event/${row.publicKey.toBase58()}`}>View Details →</Link>
+                <Link to={`/event/${row.publicKey.toBase58()}`}>View Details</Link>
               </div>
             </div>
           );
