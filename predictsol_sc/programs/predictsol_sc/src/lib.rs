@@ -34,9 +34,16 @@ pub const SEED_FALSE_MINT: &[u8] = b"false_mint";
 pub const SEED_MINT_AUTH: &[u8] = b"mint_authority";
 pub const SEED_COLLATERAL_VAULT: &[u8] = b"collateral_vault";
 
-pub const REDEEM_FEE_BPS: u64 = 100; // 1.00%
+pub const DEFAULT_CONSENSUS_THRESHOLD_BPS: u16 = 8000; // 80.00%
 pub const BPS_DENOM: u64 = 10_000;
 
+pub const RESULT_PENDING: u8 = 0;
+pub const RESULT_RESOLVED_WINNER: u8 = 1;
+pub const RESULT_FINALIZED_NO_VOTES: u8 = 2;
+pub const RESULT_FINALIZED_TIE: u8 = 3;
+pub const RESULT_FINALIZED_BELOW_THRESHOLD: u8 = 4;
+
+pub const REDEEM_FEE_BPS: u64 = 100; // 1.00%
 
 #[inline(never)]
 fn create_system_pda_0space<'info>(
@@ -109,6 +116,14 @@ fn create_and_init_spl_mint_pda<'info>(
     token::initialize_mint(cpi, decimals, mint_authority, Some(mint_authority))?;
 
     Ok(())
+}
+
+#[inline(always)]
+fn payout_after_fee(amount: u64) -> Result<u64> {
+    let fee = amount
+        .checked_mul(REDEEM_FEE_BPS).ok_or_else(|| error!(PredictError::MathOverflow))?
+        .checked_div(BPS_DENOM).ok_or_else(|| error!(PredictError::MathOverflow))?;
+    amount.checked_sub(fee).ok_or_else(|| error!(PredictError::MathOverflow))
 }
 
 // metadata helper - title prefix
@@ -253,6 +268,12 @@ pub mod predictol_sc {
         ev.total_issued_per_side = 0;
         ev.resolved = false;
         ev.winning_option = 0;
+        ev.winning_percent_bps = 0;
+        ev.votes_option_1 = 0;
+        ev.votes_option_2 = 0;
+        ev.consensus_threshold_bps = DEFAULT_CONSENSUS_THRESHOLD_BPS;
+        ev.resolved_at = 0;
+        ev.result_status = RESULT_PENDING;
 
         counter.count = counter.count.checked_add(1).ok_or(PredictError::MathOverflow)?;
 
@@ -319,8 +340,8 @@ pub mod predictol_sc {
 
         // ---------- Create Metadata for TRUE ----------
         let prefix = short_prefix(&ctx.accounts.event.title);
-        let true_name = format!("{}-TRUE", prefix);
-        let false_name = format!("{}-FALSE", prefix);
+        let true_name = format!("PS-{}-TRUE", prefix);
+        let false_name = format!("PS-{}-FALSE", prefix);
 
         let true_symbol = "TRUE".to_string();
         let false_symbol = "FALSE".to_string();
@@ -487,7 +508,7 @@ pub mod predictol_sc {
         let now = Clock::get()?.unix_timestamp;
         require!(now < ctx.accounts.event.bet_end_time, PredictError::BettingPeriodEnded);
 
-        // Additional check: the event should not be resolved
+        // the event should not be resolved
         require!(!ctx.accounts.event.resolved, PredictError::EventAlreadyResolved);
 
         // User wallet must have enough TRUE and FALSE to burn
@@ -581,39 +602,235 @@ pub mod predictol_sc {
         let ev = &mut ctx.accounts.event;
         let q = &mut ctx.accounts.truth_network_question;
 
-        // Betting must be finished
         let now = Clock::get()?.unix_timestamp;
+
+        // Betting must be finished
         require!(now >= ev.bet_end_time, PredictError::BettingStillActive);
 
         // Don't allow calling twice
         require!(!ev.resolved, PredictError::EventAlreadyResolved);
+
         require_keys_eq!(ev.truth_question, q.key(), PredictError::TruthQuestionMismatch);
 
         require!(now >= q.reveal_end_time, PredictError::TruthVotingStillActive);
 
         // CPI: finalize voting on Truth Network
         let question_id = q.id;
-        let cpi_accounts = FinalizeVoting {
-            question: q.to_account_info(),
+        let cpi_accounts = FinalizeVoting { 
+            question: q.to_account_info(), 
         };
         let cpi_ctx = CpiContext::new(
             ctx.accounts.truth_network_program.to_account_info(),
             cpi_accounts,
         );
-
         finalize_voting(cpi_ctx, question_id)?;
 
         // Refresh the account after CPI
         q.reload()?;
 
+        // Save votes
+        let v1 = q.votes_option_1;
+        let v2 = q.votes_option_2;
+        let total_votes = v1.checked_add(v2).ok_or(PredictError::MathOverflow)?;
+
+        ev.votes_option_1 = v1;
+        ev.votes_option_2 = v2;
+        ev.resolved_at = now;
+
+        // Mark event as resolved
+        ev.resolved = true;
+
+        // no votes
+        if total_votes == 0 {
+            ev.winning_option = 0;
+            ev.winning_percent_bps = 0;
+            ev.result_status = RESULT_FINALIZED_NO_VOTES;
+            return Ok(());
+        }
+
+        // tie
+        if q.winning_option == 0 {
+            ev.winning_option = 0;
+            ev.winning_percent_bps = 5000;
+            ev.result_status = RESULT_FINALIZED_TIE;
+            return Ok(());
+        }
+
+        // winner (1 or 2)
+        require!(
+            q.winning_option == 1 || q.winning_option == 2,
+            PredictError::InvalidWinningOption
+        );
+
+        let winning_votes = if q.winning_option == 1 {v1} else {v2};
+
+        // winning_percent_bps = winning_votes * 10000 / total_votes
+        let wp_bps_u64 = winning_votes
+            .checked_mul(BPS_DENOM)
+            .ok_or(PredictError::MathOverflow)?
+            .checked_div(total_votes)
+            .ok_or(PredictError::MathOverflow)?;
+
+        let wp_bps: u16 = wp_bps_u64.min(10_000) as u16;
+        ev.winning_percent_bps = wp_bps;
+
+        // if winner but below threshold => resolved but NO winner
+        if wp_bps < ev.consensus_threshold_bps {
+            ev.winning_option = 0;
+            ev.result_status = RESULT_FINALIZED_BELOW_THRESHOLD;
+            return Ok(());
+        }
+
         // Store result into PredictSol event
         ev.winning_option = q.winning_option;
-        ev.resolved = q.finalized;
-    
-        // ev.winning_percent = q.winning_percent;
+        ev.result_status = RESULT_RESOLVED_WINNER;
 
         Ok(())
     }
+
+
+    pub fn redeem_winner_after_final(ctx: Context<RedeemWinnerAfterFinal>, amount: u64) -> Result<()> {
+        require!(amount > 0, PredictError::InvalidAmount);
+
+        let ev = &mut ctx.accounts.event;
+        require!(ev.resolved, PredictError::EventNotResolved);
+        require!(ev.result_status == RESULT_RESOLVED_WINNER, PredictError::InvalidResultStatus);
+
+        // Determine which token mint is winning
+        let winning_mint = if ev.winning_option == 1 {
+            ev.true_mint
+        } else if ev.winning_option == 2 {
+            ev.false_mint
+        } else {
+            return err!(PredictError::InvalidWinningOption);
+        };
+
+        // Ensure the provided mint/ata matches the winning side
+        require_keys_eq!(ctx.accounts.mint.key(), winning_mint, PredictError::NotWinningToken);
+
+        // User must have enough winning tokens to burn
+        require!(ctx.accounts.user_ata.amount >= amount, PredictError::InsufficientTrueBalance);
+
+        // Burn winning token
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    from: ctx.accounts.user_ata.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        // payout = amount minus fee (e.g. 1.0 -> 0.99)
+        let payout = payout_after_fee(amount)?;
+
+        // Rent safety
+        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
+        require!(
+            vault_lamports >= rent_min.saturating_add(payout),
+            PredictError::VaultInsufficientFunds
+        );
+
+        // Vault PDA signs SOL transfer
+        let event_key = ev.key();
+        let vault_bump = ctx.bumps.collateral_vault;
+        let vault_seeds: [&[u8]; 3] = [SEED_COLLATERAL_VAULT, event_key.as_ref(), &[vault_bump]];
+
+        invoke_signed(
+            &system_instruction::transfer(&ctx.accounts.collateral_vault.key(), &ctx.accounts.user.key(), payout),
+            &[
+                ctx.accounts.collateral_vault.to_account_info(),
+                ctx.accounts.user.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[&vault_seeds],
+        )?;
+
+        // Update the collateral vault
+        ev.total_collateral_lamports = ev.total_collateral_lamports
+            .checked_sub(payout)
+            .ok_or(PredictError::MathOverflow)?;
+
+        Ok(())
+    }
+
+    pub fn redeem_no_winner_after_final(
+        ctx: Context<RedeemNoWinnerAfterFinal>,
+        side: u8,
+        amount: u64,
+    ) -> Result<()> {
+        require!(amount > 0, PredictError::InvalidAmount);
+
+        let ev = &mut ctx.accounts.event;
+        require!(ev.resolved, PredictError::EventNotResolved);
+
+        // result status must be a no votes, tie or below threshold
+        // must not equal to RESULT_RESOLVED_WINNER 
+        require!(ev.result_status != RESULT_RESOLVED_WINNER, PredictError::InvalidResultStatus);
+
+        // side must match the mint provided
+        let expected_mint = match side {
+            1 => ev.true_mint,
+            2 => ev.false_mint,
+            _ => return err!(PredictError::InvalidWinningOption),
+        };
+        require_keys_eq!(ctx.accounts.mint.key(), expected_mint, PredictError::InvalidMint);
+
+        // burn the token the user is redeeming
+        require!(ctx.accounts.user_ata.amount >= amount, PredictError::InsufficientTrueBalance);
+
+        token::burn(
+            CpiContext::new(
+                ctx.accounts.token_program.to_account_info(),
+                Burn {
+                    mint: ctx.accounts.mint.to_account_info(),
+                    from: ctx.accounts.user_ata.to_account_info(),
+                    authority: ctx.accounts.user.to_account_info(),
+                },
+            ),
+            amount,
+        )?;
+
+        // here we pay half (since redeeming only one side. example 1 TRUE = 0.495 SOL) minus the commission
+        let pair_payout = payout_after_fee(amount)?;
+        let payout = pair_payout.checked_div(2).ok_or(PredictError::MathOverflow)?;
+
+        // rent safety
+        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
+        require!(
+            vault_lamports >= rent_min.saturating_add(payout),
+            PredictError::VaultInsufficientFunds
+        );
+
+        // vault signs SOL transfer
+        let event_key = ev.key();
+        let vault_bump = ctx.bumps.collateral_vault;
+        let vault_seeds: [&[u8]; 3] = [SEED_COLLATERAL_VAULT, event_key.as_ref(), &[vault_bump]];
+
+        invoke_signed(
+            &system_instruction::transfer(&ctx.accounts.collateral_vault.key(), &ctx.accounts.user.key(), payout),
+            &[
+                ctx.accounts.collateral_vault.to_account_info(),
+                ctx.accounts.user.to_account_info(),
+                ctx.accounts.system_program.to_account_info(),
+            ],
+            &[&vault_seeds],
+        )?;
+
+        // update collateral vault 
+        ev.total_collateral_lamports = ev.total_collateral_lamports
+            .checked_sub(payout)
+            .ok_or(PredictError::MathOverflow)?;
+
+        Ok(())
+    }
+
+
 
 
 }
@@ -633,17 +850,26 @@ pub struct Event {
     pub event_id: u64,
     pub truth_question: Pubkey,
     pub title: String,
+
     pub bet_end_time: i64,
     pub commit_end_time: i64,
     pub reveal_end_time: i64,
     pub created_at: i64,
+
     pub total_collateral_lamports: u64,
     pub total_issued_per_side: u64,
     pub collateral_vault: Pubkey,
     pub true_mint: Pubkey,
     pub false_mint: Pubkey,
+
     pub resolved: bool,
     pub winning_option: u8,
+    pub winning_percent_bps: u16,    
+    pub votes_option_1: u64,         
+    pub votes_option_2: u64,         
+    pub consensus_threshold_bps: u16,
+    pub resolved_at: i64,            
+    pub result_status: u8,    
 }
 
 // ======================================================
@@ -664,7 +890,7 @@ pub struct CreateEventCore<'info> {
     pub creator: Signer<'info>,
     #[account(mut)]
     pub counter: Account<'info, EventCounter>,
-    #[account(init, payer = creator, space = 8 + 512, seeds = [SEED_EVENT, creator.key().as_ref(), &counter.count.to_le_bytes()], bump)]
+    #[account(init, payer = creator, space = 8 + 1024, seeds = [SEED_EVENT, creator.key().as_ref(), &counter.count.to_le_bytes()], bump)]
     pub event: Account<'info, Event>,
     pub system_program: Program<'info, System>,
 }
@@ -752,6 +978,19 @@ pub struct MintPositions<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+
+#[derive(Accounts)]
+pub struct FetchAndStoreWinner<'info> {
+    #[account(mut)]
+    pub event: Account<'info, Event>,
+
+    // Truth Network question account
+    #[account(mut)]
+    pub truth_network_question: Account<'info, Question>,
+
+    pub truth_network_program: Program<'info, TruthNetwork>,
+}
+
 #[derive(Accounts)]
 pub struct RedeemPairWhileActive<'info> {
     #[account(mut)]
@@ -798,18 +1037,71 @@ pub struct RedeemPairWhileActive<'info> {
     pub system_program: Program<'info, System>,
 }
 
-
 #[derive(Accounts)]
-pub struct FetchAndStoreWinner<'info> {
+pub struct RedeemWinnerAfterFinal<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
     #[account(mut)]
     pub event: Account<'info, Event>,
 
-    // Truth Network question account
-    #[account(mut)]
-    pub truth_network_question: Account<'info, Question>,
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key() @ PredictError::InvalidVault
+    )]
+    pub collateral_vault: SystemAccount<'info>,
 
-    pub truth_network_program: Program<'info, TruthNetwork>,
+    // Winning mint (TRUE or FALSE)
+    #[account(mut)]
+    pub mint: Account<'info, Mint>,
+
+    // User ATA for winning mint
+    #[account(
+        mut,
+        constraint = user_ata.owner == user.key() @ PredictError::InvalidTokenAccountOwner,
+        constraint = user_ata.mint == mint.key() @ PredictError::InvalidTokenAccountMint
+    )]
+    pub user_ata: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
+
+
+#[derive(Accounts)]
+pub struct RedeemNoWinnerAfterFinal<'info> {
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(mut)]
+    pub event: Account<'info, Event>,
+
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key() @ PredictError::InvalidVault
+    )]
+    pub collateral_vault: SystemAccount<'info>,
+
+    // TRUE or FALSE mint
+    #[account(mut)]
+    pub mint: Account<'info, Mint>,
+
+    // User ATA for that mint
+    #[account(
+        mut,
+        constraint = user_ata.owner == user.key() @ PredictError::InvalidTokenAccountOwner,
+        constraint = user_ata.mint == mint.key() @ PredictError::InvalidTokenAccountMint
+    )]
+    pub user_ata: Account<'info, TokenAccount>,
+
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+
 
 
 // ======================================================
@@ -878,6 +1170,14 @@ pub enum PredictError {
     TruthQuestionMismatch,
     #[msg("Truth voting is still active")]
     TruthVotingStillActive,
+    #[msg("Invalid winning option from Truth Network")]
+    InvalidWinningOption,
+    #[msg("Event is not finalized yet")]
+    EventNotResolved,
+    #[msg("Invalid result status for this action")]
+    InvalidResultStatus,
+    #[msg("This token is not the winning side")]
+    NotWinningToken,
 }
 
 

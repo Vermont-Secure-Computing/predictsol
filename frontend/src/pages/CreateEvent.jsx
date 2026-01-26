@@ -208,15 +208,15 @@ export default function CreateEvent() {
         return alert("Invalid date/time input.");
       }
 
-      if (betMs <= now) return alert("Close date must be in the future.");
+      // if (betMs <= now) return alert("Close date must be in the future.");
 
-      if (commitMs - betMs < 1 * 24 * 60 * 60 * 1000) {
-        return alert("Commit End Time must be at least 1 day after Betting Close Date.");
-      }
+      // if (commitMs - betMs < 1 * 24 * 60 * 60 * 1000) {
+      //   return alert("Commit End Time must be at least 1 day after Betting Close Date.");
+      // }
 
-      if (revealMs - commitMs < 1 * 24 * 60 * 60 * 1000) {
-        return alert("Reveal End Time must be at least 1 day after Commit End Time.");
-      }
+      // if (revealMs - commitMs < 1 * 24 * 60 * 60 * 1000) {
+      //   return alert("Reveal End Time must be at least 1 day after Commit End Time.");
+      // }
 
       const bet = new BN(Math.floor(betMs / 1000));
       const commit = new BN(Math.floor(commitMs / 1000));

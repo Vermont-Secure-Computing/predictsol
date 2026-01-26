@@ -32,6 +32,84 @@ function toBaseUnits(amountStr) {
   return new BN(units);
 }
 
+function bnToNum(x) {
+  if (x == null) return 0;
+  if (typeof x === "number") return x;
+  if (typeof x === "bigint") return Number(x);
+  if (typeof x?.toNumber === "function") return x.toNumber();
+  return Number(x) || 0;
+}
+
+function computeWinningBps(v1, v2) {
+  const total = v1 + v2;
+  if (total === 0) return { total: 0, winner: 0, bps: 0 };
+  if (v1 === v2) return { total, winner: 0, bps: 5000 };
+  if (v1 > v2) return { total, winner: 1, bps: Math.floor((v1 * 10000) / total) };
+  return { total, winner: 2, bps: Math.floor((v2 * 10000) / total) };
+}
+
+const RESULT = {
+  PENDING: 0,
+  RESOLVED_WINNER: 1,
+  FINALIZED_NO_VOTES: 2,
+  FINALIZED_TIE: 3,
+  FINALIZED_BELOW_THRESHOLD: 4,
+};
+
+function pctFromBps(bps) {
+  const n = typeof bps?.toNumber === "function" ? bps.toNumber() : Number(bps ?? 0);
+  return (n / 100).toFixed(2);
+}
+
+function bnToStr(x) {
+  return x?.toString?.() ?? String(x ?? "0");
+}
+
+function resultLabel(ev) {
+  const s = Number(ev?.resultStatus ?? 0);
+
+  if (!ev?.resolved) return "Not finalized";
+  switch (s) {
+    case RESULT.RESOLVED_WINNER:
+      return "Winner";
+    case RESULT.FINALIZED_NO_VOTES:
+      return "No votes";
+    case RESULT.FINALIZED_TIE:
+      return "Tie";
+    case RESULT.FINALIZED_BELOW_THRESHOLD:
+      return "Below threshold";
+    default:
+      return "Finalized";
+  }
+}
+
+function winnerLabel(ev) {
+  const opt = Number(ev?.winningOption ?? 0);
+  if (!ev?.resolved) return "-";
+  if (Number(ev?.resultStatus ?? 0) !== RESULT.RESOLVED_WINNER) return "No winner";
+  return opt === 1 ? "TRUE" : opt === 2 ? "FALSE" : "No winner";
+}
+
+function hasWinner(ev) {
+  return (
+    !!ev?.resolved &&
+    Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER &&
+    (Number(ev?.winningOption ?? 0) === 1 || Number(ev?.winningOption ?? 0) === 2)
+  );
+}
+
+function isNoWinnerFinal(ev) {
+  const s = Number(ev?.resultStatus ?? 0);
+  return !!ev?.resolved && (s === RESULT.FINALIZED_NO_VOTES || s === RESULT.FINALIZED_TIE || s === RESULT.FINALIZED_BELOW_THRESHOLD);
+}
+
+function baseUnitsToUi(amountBn) {
+  // BN base units (1e9) -> ui string
+  const n = amountBn?.toNumber?.() ?? 0;
+  return n / 1e9;
+}
+
+
 export default function EventDetail() {
   const { eventPda } = useParams();
   const wallet = useWallet();
@@ -61,6 +139,15 @@ export default function EventDetail() {
   const [finalizeErr, setFinalizeErr] = useState("");
   const [finalizeSig, setFinalizeSig] = useState("");
 
+  // Redeem after event is final state
+  const [postRedeemAmount, setPostRedeemAmount] = useState("0.1");
+  const [postRedeeming, setPostRedeeming] = useState(false);
+  const [postRedeemErr, setPostRedeemErr] = useState("");
+  const [postRedeemSig, setPostRedeemSig] = useState("");
+  const [postRedeemSide, setPostRedeemSide] = useState("TRUE");
+  const postRedeemLockRef = useRef(false);
+
+
   // prevents double submit even before setState updates
   const buyLockRef = useRef(false);
   const redeemLockRef = useRef(false);
@@ -79,7 +166,7 @@ export default function EventDetail() {
 
   const truthProgram = useMemo(() => {
     return walletConnected ? getTruthProgram(wallet) : getTruthReadonlyProgram();
-  })
+  }, [wallet.publicKey, wallet.connected])
 
   async function safeSimulate(conn, tx, label) {
     const tries = [
@@ -131,9 +218,10 @@ export default function EventDetail() {
 
       const merged = { pk, ...data };
       setEv(merged);
-
+      console.log("event: ", merged)
       //load truth question 
       setTruthLoading(true)
+
       try {
         const q = await loadTruthQuestion(merged)
         setTruthQ(q);
@@ -151,7 +239,6 @@ export default function EventDetail() {
 
   // load truth network event details
   async function loadTruthQuestion(evData) {
-    if (!wallet?.publicKey || !wallet.connected) return null;
     const truthPk = evData?.truthQuestion;
     if (!truthPk) return null;
     
@@ -159,6 +246,7 @@ export default function EventDetail() {
     if (truthPk.toBase58() === zero.toBase58()) return null;
 
     const q = await truthProgram.account.question.fetch(truthPk);
+    console.log("truth net: ", q)
     return q;
   }
 
@@ -400,6 +488,186 @@ export default function EventDetail() {
     }
   }
 
+  async function redeemWinnerAfterFinal(amountStr) {
+    if (!walletConnected) return setPostRedeemErr("Connect wallet to redeem.");
+    if (!program) return;
+    if (postRedeemLockRef.current) return;
+    postRedeemLockRef.current = true;
+
+    setPostRedeemErr("");
+    setPostRedeemSig("");
+
+    if (!ev?.resolved) {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr("Event is not finalized yet.");
+      return;
+    }
+
+    // must be a real winner (winningOption 1 or 2 AND status winner)
+    const status = Number(ev?.resultStatus ?? 0);
+    const winOpt = Number(ev?.winningOption ?? 0);
+    if (status !== RESULT.RESOLVED_WINNER || (winOpt !== 1 && winOpt !== 2)) {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr("No winner for this event. Use the no-winner redeem instead.");
+      return;
+    }
+
+    const amount = toBaseUnits(amountStr);
+    if (!amount) {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr("Enter a valid amount > 0 (example: 0.1)");
+      return;
+    }
+
+    setPostRedeeming(true);
+    try {
+      const eventPk = new PublicKey(eventPda);
+      const user = wallet.publicKey;
+
+      const [collateralVault] = await findCollateralVaultPda(eventPk);
+      const [trueMint] = findTrueMintPda(eventPk);
+      const [falseMint] = findFalseMintPda(eventPk);
+
+      const mint = winOpt === 1 ? trueMint : falseMint;
+
+      const userAta = getAssociatedTokenAddressSync(
+        mint,
+        user,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      const info = await program.provider.connection.getAccountInfo(userAta);
+      if (!info) throw new Error("Missing winning token ATA.");
+
+      const bal = await program.provider.connection.getTokenAccountBalance(userAta);
+      if (BigInt(amount.toString()) > BigInt(bal.value.amount)) {
+        throw new Error("The requested amount is greater than your balance.");
+      }
+
+      const tx = await program.methods
+        .redeemWinnerAfterFinal(amount)
+        .accounts({
+          user,
+          event: eventPk,
+          collateralVault,
+          mint,
+          userAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const sig = await sendAndConfirm(tx, "redeemWinnerAfterFinal");
+      setPostRedeemSig(sig);
+      await load();
+    } catch (e) {
+      console.error("[redeemWinnerAfterFinal] failed:", e);
+      setPostRedeemErr(e?.message || String(e));
+    } finally {
+      setPostRedeeming(false);
+      postRedeemLockRef.current = false;
+    }
+  }
+
+  async function redeemNoWinnerAfterFinal(amountStr, sideStr /* "TRUE" | "FALSE" */) {
+    if (!walletConnected) return setPostRedeemErr("Connect wallet to redeem.");
+    if (!program) return;
+    if (postRedeemLockRef.current) return;
+    postRedeemLockRef.current = true;
+
+    setPostRedeemErr("");
+    setPostRedeemSig("");
+
+    if (!ev?.resolved) {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr("Event is not finalized yet.");
+      return;
+    }
+
+    // must be finalized but with NO winner
+    const status = Number(ev?.resultStatus ?? 0);
+    const noWinnerStatuses = [
+      RESULT.FINALIZED_NO_VOTES,
+      RESULT.FINALIZED_TIE,
+      RESULT.FINALIZED_BELOW_THRESHOLD,
+    ];
+
+    if (!noWinnerStatuses.includes(status)) {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr("This event has a winner. Use winner redemption instead.");
+      return;
+    }
+
+    const amount = toBaseUnits(amountStr);
+    if (!amount) {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr("Enter a valid amount > 0 (example: 0.1)");
+      return;
+    }
+
+    const side = String(sideStr || "").toUpperCase();
+    if (side !== "TRUE" && side !== "FALSE") {
+      postRedeemLockRef.current = false;
+      setPostRedeemErr('Invalid side. Use "TRUE" or "FALSE".');
+      return;
+    }
+
+    setPostRedeeming(true);
+    try {
+      const eventPk = new PublicKey(eventPda);
+      const user = wallet.publicKey;
+
+      const [collateralVault] = await findCollateralVaultPda(eventPk);
+      const [trueMint] = findTrueMintPda(eventPk);
+      const [falseMint] = findFalseMintPda(eventPk);
+
+      const mint = side === "TRUE" ? trueMint : falseMint;
+
+      const userAta = getAssociatedTokenAddressSync(
+        mint,
+        user,
+        false,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
+
+      const info = await program.provider.connection.getAccountInfo(userAta);
+      if (!info) throw new Error(`Missing ${side} token ATA.`);
+
+      const bal = await program.provider.connection.getTokenAccountBalance(userAta);
+      if (BigInt(amount.toString()) > BigInt(bal.value.amount)) {
+        throw new Error("The requested amount is greater than your balance.");
+      }
+
+      const sideU8 = side === "TRUE" ? 1 : 2;
+      const tx = await program.methods
+        .redeemNoWinnerAfterFinal(sideU8, amount)
+        .accounts({
+          user,
+          event: eventPk,
+          collateralVault,
+          mint,
+          userAta,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const sig = await sendAndConfirm(tx, "redeemNoWinnerAfterFinal");
+      setPostRedeemSig(sig);
+      await load();
+    } catch (e) {
+      console.error("[redeemNoWinnerAfterFinal] failed:", e);
+      setPostRedeemErr(e?.message || String(e));
+    } finally {
+      setPostRedeeming(false);
+      postRedeemLockRef.current = false;
+    }
+  }
+
+
 
   /**
    * finalize voting helpers
@@ -440,10 +708,30 @@ export default function EventDetail() {
       return;
     }
 
-    if (truthQ && !truthRevealEnded(truthQ)) {
+    // block if already resolved/finalized
+    if (ev?.resolved) {
+      setFinalizeErr("Event is already finalized.");
+      return;
+    }
+
+    // check if truthQ loaded
+    if (!truthQ) {
+      setFinalizeErr("Load the Truth Network question first.");
+      return;
+    }
+
+    // check if truth network reveal end time has ended
+    if (!truthRevealEnded(truthQ)) {
       setFinalizeErr("Truth Network reveal phase is still active. Please try again after reveal ends.");
       return;
     }
+
+    const v1 = bnToNum(truthQ.votes_option_1 ?? truthQ.votesOption1);
+    const v2 = bnToNum(truthQ.votes_option_2 ?? truthQ.votesOption2);
+    const { total, winner, bps } = computeWinningBps(v1, v2);
+
+    const thresholdBps =
+      bnToNum(ev?.consensusThresholdBps ?? ev?.consensus_threshold_bps) || 8000;
 
     setFinalizing(true);
     try {
@@ -451,9 +739,6 @@ export default function EventDetail() {
 
       const truthQuestionPk = ev.truthQuestion;
       if (!truthQuestionPk) throw new Error("This event is not linked to a Truth Network question.");
-
-      const truthId = truthQ?.id?.toNumber?.() ?? null;
-      if (truthId === null) throw new Error("Truth question id is missing. Load truth question first.");
 
       const tx = await program.methods
         .fetchAndStoreWinner()
@@ -492,7 +777,7 @@ export default function EventDetail() {
               Read-only mode (connect wallet to interact)
             </span>
           )}
-          <button onClick={load} disabled={loading || minting || redeeming || finalizing}>
+          <button onClick={load} disabled={loading || minting || redeeming || finalizing || postRedeeming}>
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
@@ -540,7 +825,7 @@ export default function EventDetail() {
 
           <button
             onClick={() => buyTokens(solAmount)}
-            disabled={!walletConnected || !bettingActive || minting || loading || redeeming}
+            disabled={!walletConnected || !bettingActive || minting || loading || redeeming || finalizing || postRedeeming}
             style={{
               marginTop: 18,
               padding: "10px 14px",
@@ -618,7 +903,7 @@ export default function EventDetail() {
             <button
               type="button"
               onClick={() => redeemPairWhileActive(redeemAmount)}
-              disabled={redeeming || loading || minting}
+              disabled={loading || minting || redeeming || finalizing || postRedeeming}
               style={{
                 marginTop: 18,
                 padding: "10px 14px",
@@ -659,9 +944,19 @@ export default function EventDetail() {
 
       {bettingClosed && ev.resolved && (
         <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 10, background: "#fafafa" }}>
-          <div style={{ fontWeight: 700 }}>Result already stored </div>
+          <div style={{ fontWeight: 700 }}>Event finalized</div>
+          <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>
+            Outcome: <b>{resultLabel(ev)}</b> — {winnerLabel(ev)}
+            {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER && (
+              <>
+                {" "}
+                (<b>{pctFromBps(ev.winningPercentBps)}</b>%)
+              </>
+            )}
+          </div>
         </div>
       )}
+
 
 
       {/* Event info */}
@@ -691,11 +986,31 @@ export default function EventDetail() {
         <hr style={{ margin: "12px 0" }} />
 
         <div><b>Resolved:</b> {String(ev.resolved)}</div>
-        <div><b>Winning option:</b> {ev.winningOption?.toString?.()}</div>
+        <div><b>Status:</b> {resultLabel(ev)} (code {String(ev.resultStatus ?? 0)})</div>
+        <div><b>Winner:</b> {winnerLabel(ev)}</div>
+
+        <div style={{ marginTop: 6 }}>
+          <b>Winning %:</b>{" "}
+          {ev.resolved ? `${pctFromBps(ev.winningPercentBps)}%` : "-"}
+        </div>
+
+        <div style={{ marginTop: 6 }}>
+          <b>Votes:</b>{" "}
+          TRUE {bnToStr(ev.votesOption1)} - FALSE {bnToStr(ev.votesOption2)}
+        </div>
+
+        <div style={{ marginTop: 6 }}>
+          <b>Threshold:</b> {pctFromBps(ev.consensusThresholdBps)}%
+        </div>
+
+        <div style={{ marginTop: 6 }}>
+          <b>Resolved at:</b> {ev.resolvedAt ? toDate(ev.resolvedAt) : "-"}
+        </div>
+
       </div>
 
       {/* Get Result UI */}
-      {canGetResult(ev) && (
+      {canGetResult(ev) && !ev.resolved && (
         <div
           style={{
             marginTop: 14,
@@ -715,7 +1030,6 @@ export default function EventDetail() {
               <span>
                 {" "}
                 Reveal ends: <b>{toDate(truthQ.revealEndTime)}</b>{" "}
-                {truthRevealEnded(truthQ) ? "✅" : "⏳"}
               </span>
             ) : (
               <span> (no truth question loaded)</span>
@@ -724,7 +1038,7 @@ export default function EventDetail() {
 
           <button
             onClick={getResult}
-            disabled={!walletConnected || finalizing || loading || minting || redeeming}
+            disabled={!walletConnected || finalizing || loading || minting || redeeming || finalizing || postRedeeming || ev.resolved}
             style={{
               padding: "10px 14px",
               borderRadius: 10,
@@ -755,6 +1069,128 @@ export default function EventDetail() {
           )}
         </div>
       )}
+
+
+      {/* Post-finalization Redeem UI */}
+      {bettingClosed && ev.resolved && (
+        <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 10, background: "#fafafa" }}>
+          
+
+          {hasWinner(ev) ? (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                Winner is <b>{winnerLabel(ev)}</b>
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+                expected: 1 <b>{winnerLabel(ev)}</b> token → ~0.99 SOL
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
+                  <input
+                    value={postRedeemAmount}
+                    onChange={(e) => setPostRedeemAmount(e.target.value)}
+                    placeholder="e.g. 0.1"
+                    style={{ width: 160, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", outline: "none" }}
+                    inputMode="decimal"
+                    disabled={!walletConnected}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => redeemWinnerAfterFinal(postRedeemAmount)}
+                  disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing}
+                  style={{
+                    marginTop: 18,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #111",
+                    background: postRedeeming ? "#eee" : "#111",
+                    color: postRedeeming ? "#111" : "#fff",
+                    cursor: postRedeeming ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {postRedeeming ? "Redeeming..." : `Redeem ${winnerLabel(ev)} → SOL`}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                There is <b>no winner</b> for this event ({resultLabel(ev)}).
+              </div>
+              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+                 You can redeem TRUE or FALSE.
+                {" "}(expected: 1 token → ~0.49 SOL)
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 12, opacity: 0.8 }}>Side</label>
+                  <select
+                    value={postRedeemSide}
+                    onChange={(e) => setPostRedeemSide(e.target.value)}
+                    style={{ width: 160, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", outline: "none" }}
+                    disabled={!walletConnected}
+                  >
+                    <option value="TRUE">TRUE</option>
+                    <option value="FALSE">FALSE</option>
+                  </select>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
+                  <input
+                    value={postRedeemAmount}
+                    onChange={(e) => setPostRedeemAmount(e.target.value)}
+                    placeholder="e.g. 0.1"
+                    style={{ width: 160, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", outline: "none" }}
+                    inputMode="decimal"
+                    disabled={!walletConnected}
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => redeemNoWinnerAfterFinal(postRedeemAmount, postRedeemSide)}
+                  disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing}
+                  style={{
+                    marginTop: 18,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    border: "1px solid #111",
+                    background: postRedeeming ? "#eee" : "#111",
+                    color: postRedeeming ? "#111" : "#fff",
+                    cursor: postRedeeming ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {postRedeeming ? "Redeeming..." : `Redeem ${postRedeemSide} → SOL`}
+                </button>
+              </div>
+            </>
+          )}
+
+          {!walletConnected && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+              Connect wallet to redeem.
+            </div>
+          )}
+
+          {postRedeemErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{postRedeemErr}</div>}
+
+          {postRedeemSig && (
+            <div style={{ marginTop: 10, fontSize: 13 }}>
+              <b>TX:</b>{" "}
+              <a href={`https://solscan.io/tx/${postRedeemSig}?cluster=devnet`} target="_blank" rel="noreferrer">
+                {postRedeemSig}
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
 
     </div>
   );
