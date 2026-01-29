@@ -27,11 +27,13 @@ export default function EventsList() {
       rows.sort((a, b) => (b.account.createdAt?.toNumber?.() ?? 0) - (a.account.createdAt?.toNumber?.() ?? 0));
       setEvents(rows);
     } catch (e) {
+      console.log("load events error: ", e)
       setErr(e?.message || String(e));
     } finally {
       setLoading(false);
     }
   }
+
 
   useEffect(() => {
     if (!program) return;
