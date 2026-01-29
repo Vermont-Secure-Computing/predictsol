@@ -21,6 +21,8 @@ use truth_network::{
 // Import the Truth-Network program
 use truth_network::accounts::Question;
 
+pub const HOUSE_WALLET: Pubkey = pubkey!("4yuDDnFAavYGyBBcWb2HkAcD5bgoZRvRJZHUgrXTWHGX");
+
 
 declare_id!("E9o834tLQRWpscJNMSq3C4wUyoXPwymAS3ZDfjuK9tpu");
 
@@ -44,6 +46,10 @@ pub const RESULT_FINALIZED_TIE: u8 = 3;
 pub const RESULT_FINALIZED_BELOW_THRESHOLD: u8 = 4;
 
 pub const REDEEM_FEE_BPS: u64 = 100; // 1.00%
+
+// uri token metadata
+pub const TRUE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreid3dy6vqafcoc6rj6xduhvh6at3scdkrzgh4v7atpbsubvmbf7u3i";
+pub const FALSE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreic5zxpclijkcyy2lh3u4hmzqrii4f4h532paopotyj4bn2erlia34";
 
 #[inline(never)]
 fn create_system_pda_0space<'info>(
@@ -224,6 +230,227 @@ pub struct CreateMetadataAccountArgsV3 {
     pub collection_details: Option<CollectionDetails>,
 }
 
+// ============================================================
+// Create event, create mint, buy token and mint token helpers
+// ============================================================
+fn compute_fee_splits(lamports: u64) -> Result<(u64, u64, u64, u64, u64)> {
+    let fee = lamports / 100; // 1%
+    let net = lamports.checked_sub(fee).ok_or(PredictError::MathOverflow)?;
+
+    let third = fee / 3;
+    let truth_cut = third;
+    let creator_cut = third;
+    let house_cut = fee
+        .checked_sub(truth_cut.checked_add(creator_cut).ok_or(PredictError::MathOverflow)?)
+        .ok_or(PredictError::MathOverflow)?;
+
+    Ok((fee, truth_cut, creator_cut, house_cut, net))
+}
+
+fn transfer_in<'info>(
+    user: &Signer<'info>,
+    vault: &SystemAccount<'info>,
+    system_program: &Program<'info, System>,
+    lamports: u64,
+) -> Result<()> {
+    let ix = anchor_lang::solana_program::system_instruction::transfer(
+        &user.key(),
+        &vault.key(),
+        lamports,
+    );
+
+    anchor_lang::solana_program::program::invoke(
+        &ix,
+        &[
+            user.to_account_info(),
+            vault.to_account_info(),
+            system_program.to_account_info(),
+        ],
+    )?;
+
+    Ok(())
+}
+
+fn transfer_from_vault_to_truth<'info>(
+    collateral_vault: &AccountInfo<'info>,
+    truth_vault: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    event_key: &Pubkey,
+    vault_bump: u8,
+    lamports: u64,
+) -> Result<()> {
+    if lamports == 0 {
+        return Ok(());
+    }
+
+    let seeds: [&[u8]; 3] = [
+        SEED_COLLATERAL_VAULT,
+        event_key.as_ref(),
+        &[vault_bump],
+    ];
+
+    invoke_signed(
+        &system_instruction::transfer(collateral_vault.key, truth_vault.key, lamports),
+        &[
+            collateral_vault.clone(),
+            truth_vault.clone(),
+            system_program.clone(),
+        ],
+        &[&seeds],
+    )?;
+
+    Ok(())
+}
+
+#[inline(never)]
+fn transfer_from_collateral_vault<'info>(
+    collateral_vault: &AccountInfo<'info>,
+    dest: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    event_key: &Pubkey,
+    vault_bump: u8,
+    lamports: u64,
+) -> Result<()> {
+    if lamports == 0 {
+        return Ok(());
+    }
+
+    let seeds: [&[u8]; 3] = [
+        SEED_COLLATERAL_VAULT,
+        event_key.as_ref(),
+        &[vault_bump],
+    ];
+
+    invoke_signed(
+        &system_instruction::transfer(collateral_vault.key, dest.key, lamports),
+        &[
+            collateral_vault.clone(),
+            dest.clone(),
+            system_program.clone(),
+        ],
+        &[&seeds],
+    )?;
+
+    Ok(())
+}
+
+
+#[inline(never)]
+fn sweep_house_commission<'info>(
+    ev: &mut Account<'info, Event>,
+    collateral_vault: &AccountInfo<'info>,
+    house_treasury: &AccountInfo<'info>,
+    system_program: &AccountInfo<'info>,
+    vault_bump: u8,
+) -> Result<()> {
+    let amount = ev.pending_house_commission;
+    if amount == 0 {
+        return Ok(());
+    }
+
+    // rent safety
+    let rent_min = Rent::get()?.minimum_balance(0) as u64;
+    let vault_lamports = collateral_vault.lamports();
+    require!(
+        vault_lamports >= rent_min.saturating_add(amount),
+        PredictError::VaultInsufficientFunds
+    );
+
+    let event_key = ev.key();
+
+    transfer_from_collateral_vault(
+        collateral_vault,
+        house_treasury,
+        system_program,
+        &event_key,
+        vault_bump,
+        amount,
+    )?;
+
+    ev.pending_house_commission = 0;
+    Ok(())
+}
+
+
+fn mint_net_positions<'info>(
+    accs: &BuyPositionsWithFee<'info>,
+    net: u64,
+    mint_auth_bump: u8,
+) -> Result<()> {
+    let event_key = accs.event.key();
+    let seeds = &[
+        SEED_MINT_AUTH,
+        event_key.as_ref(),
+        &[mint_auth_bump],
+    ];
+    let signer = &[&seeds[..]];
+
+    token::mint_to(
+        CpiContext::new(
+            accs.token_program.to_account_info(),
+            token::MintTo {
+                mint: accs.true_mint.to_account_info(),
+                to: accs.user_true_ata.to_account_info(),
+                authority: accs.mint_authority.to_account_info(),
+            },
+        )
+        .with_signer(signer),
+        net,
+    )?;
+
+    token::mint_to(
+        CpiContext::new(
+            accs.token_program.to_account_info(),
+            token::MintTo {
+                mint: accs.false_mint.to_account_info(),
+                to: accs.user_false_ata.to_account_info(),
+                authority: accs.mint_authority.to_account_info(),
+            },
+        )
+        .with_signer(signer),
+        net,
+    )?;
+
+    Ok(())
+}
+
+fn apply_accounting(
+    ev: &mut Account<Event>,
+    deposited: u64,
+    net: u64,
+    truth_cut: u64,
+    creator_cut: u64,
+    house_cut: u64,
+) -> Result<()> {
+    ev.total_collateral_lamports = ev
+        .total_collateral_lamports
+        .checked_add(deposited)
+        .ok_or(PredictError::MathOverflow)?;
+
+    ev.total_issued_per_side = ev
+        .total_issued_per_side
+        .checked_add(net)
+        .ok_or(PredictError::MathOverflow)?;
+
+    ev.total_truth_commission_sent = ev
+        .total_truth_commission_sent
+        .checked_add(truth_cut)
+        .ok_or(PredictError::MathOverflow)?;
+
+    ev.pending_creator_commission = ev
+        .pending_creator_commission
+        .checked_add(creator_cut)
+        .ok_or(PredictError::MathOverflow)?;
+
+    ev.pending_house_commission = ev
+        .pending_house_commission
+        .checked_add(house_cut)
+        .ok_or(PredictError::MathOverflow)?;
+
+    Ok(())
+}
+
+
 // ======================================================
 // PROGRAM
 // ======================================================
@@ -274,6 +501,10 @@ pub mod predictol_sc {
         ev.consensus_threshold_bps = DEFAULT_CONSENSUS_THRESHOLD_BPS;
         ev.resolved_at = 0;
         ev.result_status = RESULT_PENDING;
+        ev.total_truth_commission_sent = 0;
+        ev.pending_creator_commission = 0;
+        ev.pending_house_commission = 0;
+
 
         counter.count = counter.count.checked_add(1).ok_or(PredictError::MathOverflow)?;
 
@@ -346,7 +577,9 @@ pub mod predictol_sc {
         let true_symbol = "TRUE".to_string();
         let false_symbol = "FALSE".to_string();
 
-        let uri = "".to_string(); // blank for now
+        //let uri = "".to_string(); // blank for now
+        let true_uri = TRUE_TOKEN_URI.to_string();
+        let false_uri = FALSE_TOKEN_URI.to_string();
 
         let true_metadata = ctx.accounts.true_metadata.key();
         let false_metadata = ctx.accounts.false_metadata.key();
@@ -365,7 +598,7 @@ pub mod predictol_sc {
         let true_data = DataV2 {
             name: true_name,
             symbol: true_symbol,
-            uri: uri.clone(),
+            uri: true_uri,
             seller_fee_basis_points: 0,
             creators: None,
             collection: None,
@@ -375,7 +608,7 @@ pub mod predictol_sc {
         let false_data = DataV2 {
             name: false_name,
             symbol: false_symbol,
-            uri,
+            uri: false_uri,
             seller_fee_basis_points: 0,
             creators: None,
             collection: None,
@@ -445,60 +678,44 @@ pub mod predictol_sc {
         Ok(())
     }
 
-    pub fn deposit_collateral(ctx: Context<DepositCollateral>, lamports: u64) -> Result<()> {
+    pub fn buy_positions_with_fee(ctx: Context<BuyPositionsWithFee>, lamports: u64) -> Result<()> {
         require!(lamports > 0, PredictError::InvalidAmount);
 
-        // Move lamports using System Program
-        let ix = anchor_lang::solana_program::system_instruction::transfer(
-            &ctx.accounts.user.key(),
-            &ctx.accounts.collateral_vault.key(),
-            lamports,
+        // 1) verify truth vault matches the truth question
+        require_keys_eq!(
+            ctx.accounts.truth_network_vault.key(),
+            ctx.accounts.truth_network_question.vault_address,
+            PredictError::InvalidTruthVault
         );
 
-        anchor_lang::solana_program::program::invoke(
-            &ix,
-            &[
-                ctx.accounts.user.to_account_info(),
-                ctx.accounts.collateral_vault.to_account_info(),
-                ctx.accounts.system_program.to_account_info(),
-            ],
+        // 2) fee split
+        let (fee, truth_cut, creator_cut, house_cut, net) = compute_fee_splits(lamports)?;
+
+        // 3) transfer user -> collateral vault (full lamports)
+        transfer_in(&ctx.accounts.user, &ctx.accounts.collateral_vault, &ctx.accounts.system_program, lamports)?;
+
+        // 4) move only truth cut to truth vault
+        let vault_bump = ctx.bumps.collateral_vault;
+        transfer_from_vault_to_truth(
+            &ctx.accounts.collateral_vault.to_account_info(),
+            &ctx.accounts.truth_network_vault.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts.event.key(),
+            vault_bump,
+            truth_cut,
         )?;
 
-        // Accounting
-        ctx.accounts.event.total_collateral_lamports = ctx
-            .accounts
-            .event
-            .total_collateral_lamports
-            .checked_add(lamports)
-            .ok_or(PredictError::MathOverflow)?;
+        // 5) mint net TRUE + FALSE
+        let mint_auth_bump = ctx.bumps.mint_authority;
+        mint_net_positions(&ctx.accounts, net, mint_auth_bump)?;
+
+
+        // 6) accounting
+        apply_accounting(&mut ctx.accounts.event, lamports, net, truth_cut, creator_cut, house_cut)?;
 
         Ok(())
     }
 
-
-    pub fn mint_positions(ctx: Context<MintPositions>, amount: u64) -> Result<()> {
-        let bump = ctx.bumps.mint_authority;
-        let event_key = ctx.accounts.event.key();
-
-        let seeds = &[
-            SEED_MINT_AUTH,
-            event_key.as_ref(),
-            &[bump],
-        ];
-        let signer = &[&seeds[..]];
-
-        token::mint_to(ctx.accounts.mint_true_ctx().with_signer(signer), amount)?;
-        token::mint_to(ctx.accounts.mint_false_ctx().with_signer(signer), amount)?;
-
-        ctx.accounts.event.total_issued_per_side = ctx
-            .accounts
-            .event
-            .total_issued_per_side
-            .checked_add(amount)
-            .ok_or(PredictError::MathOverflow)?;
-
-        Ok(())
-    }
 
 
     pub fn redeem_pair_while_active(ctx: Context<RedeemPairWhileActive>, amount: u64) -> Result<()> {
@@ -616,12 +833,9 @@ pub mod predictol_sc {
 
         // CPI: finalize voting on Truth Network
         let question_id = q.id;
-        let cpi_accounts = FinalizeVoting { 
-            question: q.to_account_info(), 
-        };
         let cpi_ctx = CpiContext::new(
             ctx.accounts.truth_network_program.to_account_info(),
-            cpi_accounts,
+            FinalizeVoting { question: q.to_account_info() },
         );
         finalize_voting(cpi_ctx, question_id)?;
 
@@ -639,6 +853,16 @@ pub mod predictol_sc {
 
         // Mark event as resolved
         ev.resolved = true;
+
+        // sweep house commission once, regardless of outcome
+        let vault_bump = ctx.bumps.collateral_vault;
+        sweep_house_commission(
+            ev,
+            &ctx.accounts.collateral_vault.to_account_info(),
+            &ctx.accounts.house_treasury.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            vault_bump,
+        )?;
 
         // no votes
         if total_votes == 0 {
@@ -831,6 +1055,40 @@ pub mod predictol_sc {
     }
 
 
+    pub fn claim_creator_commission(ctx: Context<ClaimCreatorCommission>) -> Result<()> {
+        let ev = &mut ctx.accounts.event;
+        let now = Clock::get()?.unix_timestamp;
+
+        require!(now >= ev.bet_end_time, PredictError::BettingStillActive);
+        require_keys_eq!(ctx.accounts.creator.key(), ev.creator, PredictError::Unauthorized);
+
+        let amount = ev.pending_creator_commission;
+        require!(amount > 0, PredictError::NothingToClaim);
+
+        // rent safety
+        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
+        require!(vault_lamports >= rent_min.saturating_add(amount), PredictError::VaultInsufficientFunds);
+
+        // transfer
+        let event_key = ev.key();
+        let vault_bump = ctx.bumps.collateral_vault;
+
+        transfer_from_collateral_vault(
+            &ctx.accounts.collateral_vault.to_account_info(),
+            &ctx.accounts.creator.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &event_key,
+            vault_bump,
+            amount,
+        )?;
+
+        ev.pending_creator_commission = 0;
+        Ok(())
+    }
+
+
+
 
 
 }
@@ -870,6 +1128,10 @@ pub struct Event {
     pub consensus_threshold_bps: u16,
     pub resolved_at: i64,            
     pub result_status: u8,    
+
+    pub total_truth_commission_sent: u64,
+    pub pending_creator_commission: u64,
+    pub pending_house_commission: u64,
 }
 
 // ======================================================
@@ -938,7 +1200,7 @@ pub struct CreateEventMints<'info> {
 }
 
 #[derive(Accounts)]
-pub struct DepositCollateral<'info> {
+pub struct BuyPositionsWithFee<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
 
@@ -952,30 +1214,30 @@ pub struct DepositCollateral<'info> {
     )]
     pub collateral_vault: SystemAccount<'info>,
 
-    pub system_program: Program<'info, System>,
-}
-
-
-#[derive(Accounts)]
-pub struct MintPositions<'info> {
-    #[account(mut)]
-    pub user: Signer<'info>,
-    #[account(mut)]
-    pub event: Account<'info, Event>,
-
     /// CHECK: PDA mint authority signer
     #[account(seeds = [SEED_MINT_AUTH, event.key().as_ref()], bump)]
     pub mint_authority: UncheckedAccount<'info>,
 
-    #[account(mut)]
+    #[account(mut, constraint = event.true_mint == true_mint.key() @ PredictError::InvalidMint)]
     pub true_mint: Account<'info, Mint>,
-    #[account(mut)]
+    #[account(mut, constraint = event.false_mint == false_mint.key() @ PredictError::InvalidMint)]
     pub false_mint: Account<'info, Mint>,
+
     #[account(mut)]
     pub user_true_ata: Account<'info, TokenAccount>,
     #[account(mut)]
     pub user_false_ata: Account<'info, TokenAccount>,
+
+    // ---- Truth network read + vault ----
+    #[account(mut)]
+    pub truth_network_question: Account<'info, Question>,
+
+    /// CHECK: vault is system-owned PDA in Truth-Network (no data), but must be mutable
+    #[account(mut)]
+    pub truth_network_vault: UncheckedAccount<'info>,
+
     pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 
@@ -984,12 +1246,27 @@ pub struct FetchAndStoreWinner<'info> {
     #[account(mut)]
     pub event: Account<'info, Event>,
 
-    // Truth Network question account
     #[account(mut)]
     pub truth_network_question: Account<'info, Question>,
 
     pub truth_network_program: Program<'info, TruthNetwork>,
+
+    /// CHECK: Fixed house wallet
+    #[account(mut, address = HOUSE_WALLET)]
+    pub house_treasury: AccountInfo<'info>,
+
+    /// CHECK: Collateral vault PDA
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump
+    )]
+    pub collateral_vault: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
 }
+
+
 
 #[derive(Accounts)]
 pub struct RedeemPairWhileActive<'info> {
@@ -1102,34 +1379,25 @@ pub struct RedeemNoWinnerAfterFinal<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct ClaimCreatorCommission<'info> {
+    #[account(mut)]
+    pub creator: Signer<'info>,
 
+    #[account(mut)]
+    pub event: Account<'info, Event>,
 
-// ======================================================
-// CPI HELPERS
-// ======================================================
-impl<'info> MintPositions<'info> {
-    fn mint_true_ctx(&self) -> CpiContext<'_, '_, '_, 'info, MintTo<'info>> {
-        CpiContext::new(
-            self.token_program.to_account_info(),
-            MintTo {
-                mint: self.true_mint.to_account_info(),
-                to: self.user_true_ata.to_account_info(),
-                authority: self.mint_authority.to_account_info(),
-            },
-        )
-    }
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key() @ PredictError::InvalidVault
+    )]
+    pub collateral_vault: SystemAccount<'info>,
 
-    fn mint_false_ctx(&self) -> CpiContext<'_, '_, '_, 'info, MintTo<'info>> {
-        CpiContext::new(
-            self.token_program.to_account_info(),
-            MintTo {
-                mint: self.false_mint.to_account_info(),
-                to: self.user_false_ata.to_account_info(),
-                authority: self.mint_authority.to_account_info(),
-            },
-        )
-    }
+    pub system_program: Program<'info, System>,
 }
+
 
 // ======================================================
 // ERRORS
@@ -1178,6 +1446,12 @@ pub enum PredictError {
     InvalidResultStatus,
     #[msg("This token is not the winning side")]
     NotWinningToken,
+    #[msg("Invalid truth vault")]
+    InvalidTruthVault,
+    #[msg("Unauthorized")]
+    Unauthorized,
+    #[msg("Nothing to claim")]
+    NothingToClaim,
 }
 
 

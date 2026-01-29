@@ -22,7 +22,6 @@ import { getPredictReadonlyProgram, getTruthReadonlyProgram } from "../lib/ancho
 
 import { sendAndConfirmSafe } from "../utils/sendTx";
 import { getConstants } from "../constants";
-import { publicKey } from "@coral-xyz/anchor/dist/cjs/utils";
 
 function toBaseUnits(amountStr) {
   const n = Number(amountStr);
@@ -38,14 +37,6 @@ function bnToNum(x) {
   if (typeof x === "bigint") return Number(x);
   if (typeof x?.toNumber === "function") return x.toNumber();
   return Number(x) || 0;
-}
-
-function computeWinningBps(v1, v2) {
-  const total = v1 + v2;
-  if (total === 0) return { total: 0, winner: 0, bps: 0 };
-  if (v1 === v2) return { total, winner: 0, bps: 5000 };
-  if (v1 > v2) return { total, winner: 1, bps: Math.floor((v1 * 10000) / total) };
-  return { total, winner: 2, bps: Math.floor((v2 * 10000) / total) };
 }
 
 const RESULT = {
@@ -98,16 +89,14 @@ function hasWinner(ev) {
   );
 }
 
-function isNoWinnerFinal(ev) {
-  const s = Number(ev?.resultStatus ?? 0);
-  return !!ev?.resolved && (s === RESULT.FINALIZED_NO_VOTES || s === RESULT.FINALIZED_TIE || s === RESULT.FINALIZED_BELOW_THRESHOLD);
+function baseToUiStr(baseStr, decimals = 9) {
+  const x = BigInt(baseStr || "0");
+  const whole = x / BigInt(10 ** decimals);
+  const frac = x % BigInt(10 ** decimals);
+  const fracStr = frac.toString().padStart(decimals, "0").slice(0, 4); // 4 dp
+  return `${whole.toString()}.${fracStr}`;
 }
 
-function baseUnitsToUi(amountBn) {
-  // BN base units (1e9) -> ui string
-  const n = amountBn?.toNumber?.() ?? 0;
-  return n / 1e9;
-}
 
 
 export default function EventDetail() {
@@ -147,6 +136,21 @@ export default function EventDetail() {
   const [postRedeemSide, setPostRedeemSide] = useState("TRUE");
   const postRedeemLockRef = useRef(false);
 
+  const [userToken, setUserToken] = useState({
+    trueAta: null,
+    falseAta: null,
+    trueExists: false,
+    falseExists: false,
+    trueBalBase: "0",   // string base units
+    falseBalBase: "0",  // string base units
+    loading: false,
+    err: "",
+  });
+
+  const [claimingCreator, setClaimingCreator] = useState(false);
+  const [claimCreatorErr, setClaimCreatorErr] = useState("");
+  const [claimCreatorSig, setClaimCreatorSig] = useState("");
+
 
   // prevents double submit even before setState updates
   const buyLockRef = useRef(false);
@@ -167,6 +171,78 @@ export default function EventDetail() {
   const truthProgram = useMemo(() => {
     return walletConnected ? getTruthProgram(wallet) : getTruthReadonlyProgram();
   }, [wallet.publicKey, wallet.connected])
+
+
+  async function loadUserTokenState(evData) {
+    if (!walletConnected) {
+      setUserToken((s) => ({ ...s, loading: false }));
+      return;
+    }
+    if (!evData?.trueMint || !evData?.falseMint) return;
+
+    setUserToken((s) => ({ ...s, loading: true, err: "" }));
+
+    try {
+      const user = wallet.publicKey;
+      const trueMint = evData.trueMint;
+      const falseMint = evData.falseMint;
+
+      const trueAta = getAssociatedTokenAddressSync(trueMint, user, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+      const falseAta = getAssociatedTokenAddressSync(falseMint, user, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+
+      const conn = program.provider.connection;
+
+      // fetch account infos in parallel
+      const [trueInfo, falseInfo] = await Promise.all([
+        conn.getAccountInfo(trueAta),
+        conn.getAccountInfo(falseAta),
+      ]);
+
+      let trueBalBase = "0";
+      let falseBalBase = "0";
+
+      // fetch balances only if ATA exists (avoids errors)
+      if (trueInfo) {
+        const b = await conn.getTokenAccountBalance(trueAta);
+        trueBalBase = b?.value?.amount ?? "0";
+      }
+      if (falseInfo) {
+        const b = await conn.getTokenAccountBalance(falseAta);
+        falseBalBase = b?.value?.amount ?? "0";
+      }
+
+      setUserToken({
+        trueAta,
+        falseAta,
+        trueExists: !!trueInfo,
+        falseExists: !!falseInfo,
+        trueBalBase,
+        falseBalBase,
+        loading: false,
+        err: "",
+      });
+    } catch (e) {
+      setUserToken((s) => ({
+        ...s,
+        loading: false,
+        err: e?.message || String(e),
+      }));
+    }
+  }
+
+  useEffect(() => {
+    if (!ev) return;
+    loadUserTokenState(ev);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [walletConnected, wallet.publicKey?.toBase58(), ev?.pk?.toBase58?.()]);
+
+
+  const hasAnyToken =
+    BigInt(userToken.trueBalBase || "0") > 0n || BigInt(userToken.falseBalBase || "0") > 0n;
+
+  const hasBothTokens =
+    BigInt(userToken.trueBalBase || "0") > 0n && BigInt(userToken.falseBalBase || "0") > 0n;
+
 
   async function safeSimulate(conn, tx, label) {
     const tries = [
@@ -219,6 +295,9 @@ export default function EventDetail() {
       const merged = { pk, ...data };
       setEv(merged);
       console.log("event: ", merged)
+
+      await loadUserTokenState(merged);
+
       //load truth question 
       setTruthLoading(true)
 
@@ -298,6 +377,14 @@ export default function EventDetail() {
     return ata;
   }
 
+  function asPubkey(x) {
+    if (!x) return null;
+    if (x instanceof PublicKey) return x;
+    if (typeof x === "string") return new PublicKey(x);
+    if (typeof x?.toBase58 === "function") return new PublicKey(x.toBase58());
+    return null;
+  }
+
   async function buyTokens(solAmountStr) {
     if (!walletConnected) return setMintErr("Connect wallet to buy.");
     if (!program) return;
@@ -321,6 +408,29 @@ export default function EventDetail() {
       return;
     }
 
+    // must have linked truth question loaded (because we need its vault)
+    if (!ev?.truthQuestion) {
+      buyLockRef.current = false;
+      setMintErr("This event is not linked to a Truth Network question.");
+      return;
+    }
+
+    if (!truthQ) {
+      buyLockRef.current = false;
+      setMintErr("Truth Network question not loaded yet. Click Refresh and try again.");
+      return;
+    }
+
+    const truthVaultPk = asPubkey(
+      truthQ?.vaultAddress ?? truthQ?.vault_address ?? truthQ?.vault
+    );
+
+    if (!truthVaultPk) {
+      buyLockRef.current = false;
+      setMintErr("Truth vault address missing/invalid from Truth Network question.");
+      return;
+    }
+
     setMinting(true);
 
     try {
@@ -332,51 +442,33 @@ export default function EventDetail() {
       const [trueMint] = findTrueMintPda(eventPk);
       const [falseMint] = findFalseMintPda(eventPk);
 
-      console.log("[buy] event:", eventPk.toBase58());
-      console.log("[buy] vault:", collateralVault.toBase58());
-      console.log("[buy] trueMint:", trueMint.toBase58());
-      console.log("[buy] falseMint:", falseMint.toBase58());
-
-      // ensure ATAs exist
+      // ensure ATAs exist (may cost extra tx only if they don't exist)
       const userTrueAta = await ensureAta(trueMint, user);
       const userFalseAta = await ensureAta(falseMint, user);
 
-      console.log("[buy] userTrueAta:", userTrueAta.toBase58());
-      console.log("[buy] userFalseAta:", userFalseAta.toBase58());
-
       const lamports = new BN(Math.floor(amountNum * 1e9));
 
-      // TX #1: deposit collateral (send via wallet adapter)
-      const tx1 = await program.methods
-        .depositCollateral(lamports)
+      const tx = await program.methods
+        .buyPositionsWithFee(lamports)
         .accounts({
           user,
           event: eventPk,
           collateralVault,
-          systemProgram: SystemProgram.programId,
-        })
-        .transaction();
-
-      await sendAndConfirm(tx1, "depositCollateral");
-
-      // TX #2: mint positions (send via wallet adapter)
-      const tx2 = await program.methods
-        .mintPositions(lamports)
-        .accounts({
-          user,
-          event: eventPk,
           mintAuthority,
           trueMint,
           falseMint,
           userTrueAta,
           userFalseAta,
+          truthNetworkQuestion: ev.truthQuestion, // already a Pubkey in your ev data
+          truthNetworkVault: truthVaultPk,        // from truthQ
           tokenProgram: TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .transaction();
 
-      const sig2 = await sendAndConfirm(tx2, "mintPositions");
+      const sig = await sendAndConfirm(tx, "buyPositionsWithFee");
 
-      setMintSig(sig2);
+      setMintSig(sig);
       await load();
     } catch (e) {
       console.error("[buy] failed:", e);
@@ -391,6 +483,7 @@ export default function EventDetail() {
       buyLockRef.current = false;
     }
   }
+
 
   async function redeemPairWhileActive(redeemAmountStr) {
 
@@ -425,27 +518,23 @@ export default function EventDetail() {
       const [trueMint] = findTrueMintPda(eventPk);
       const [falseMint] = findFalseMintPda(eventPk);
 
-      const userTrueAta = getAssociatedTokenAddressSync(trueMint, user, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-      const userFalseAta = getAssociatedTokenAddressSync(falseMint, user, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+      if (!userToken.trueExists || !userToken.falseExists) {
+        throw new Error("Missing TRUE/FALSE ATA. You probably don't hold both tokens for this event.");
+      }
+      const userTrueAta = userToken.trueAta;
+      const userFalseAta = userToken.falseAta;
+
+      if (BigInt(amount.toString()) > BigInt(userToken.trueBalBase || "0")) {
+        throw new Error("Amount > TRUE balance.");
+      }
+      if (BigInt(amount.toString()) > BigInt(userToken.falseBalBase || "0")) {
+        throw new Error("Amount > FALSE balance.");
+      }
 
       const info1 = await program.provider.connection.getAccountInfo(userTrueAta);
       const info2 = await program.provider.connection.getAccountInfo(userFalseAta);
       if (!info1 || !info2) {
         throw new Error("Missing TRUE/FALSE ATA. You probably don't hold both tokens for this event.");
-      }
-
-      const [trueBal, falseBal] = await Promise.all([
-        program.provider.connection.getTokenAccountBalance(userTrueAta),
-        program.provider.connection.getTokenAccountBalance(userFalseAta),
-      ]);
-
-      const trueUi = Number(trueBal.value.amount);  // base units as string -> Number if safe
-      const falseUi = Number(falseBal.value.amount);
-
-      if (amount.toNumber() > trueUi || amount.toNumber() > falseUi) {
-        setRedeeming(false);
-        setRedeemErr("The requested amount is greater than your balance.");
-        return;
       }
 
       console.log("[redeem] amount(base):", amount.toString());
@@ -541,8 +630,13 @@ export default function EventDetail() {
       const info = await program.provider.connection.getAccountInfo(userAta);
       if (!info) throw new Error("Missing winning token ATA.");
 
-      const bal = await program.provider.connection.getTokenAccountBalance(userAta);
-      if (BigInt(amount.toString()) > BigInt(bal.value.amount)) {
+      // const bal = await program.provider.connection.getTokenAccountBalance(userAta);
+      // if (BigInt(amount.toString()) > BigInt(bal.value.amount)) {
+      //   throw new Error("The requested amount is greater than your balance.");
+      // }
+      const side = Number(ev?.winningOption ?? 0);
+      const balBase = side === 1 ? userToken.trueBalBase : userToken.falseBalBase;
+      if (BigInt(amount.toString()) > BigInt(balBase || "0")) {
         throw new Error("The requested amount is greater than your balance.");
       }
 
@@ -636,8 +730,9 @@ export default function EventDetail() {
       const info = await program.provider.connection.getAccountInfo(userAta);
       if (!info) throw new Error(`Missing ${side} token ATA.`);
 
-      const bal = await program.provider.connection.getTokenAccountBalance(userAta);
-      if (BigInt(amount.toString()) > BigInt(bal.value.amount)) {
+      //const bal = await program.provider.connection.getTokenAccountBalance(userAta);
+      const balBase = side === "TRUE" ? userToken.trueBalBase : userToken.falseBalBase;
+      if (BigInt(amount.toString()) > BigInt(balBase || "0")) {
         throw new Error("The requested amount is greater than your balance.");
       }
 
@@ -728,10 +823,7 @@ export default function EventDetail() {
 
     const v1 = bnToNum(truthQ.votes_option_1 ?? truthQ.votesOption1);
     const v2 = bnToNum(truthQ.votes_option_2 ?? truthQ.votesOption2);
-    const { total, winner, bps } = computeWinningBps(v1, v2);
-
-    const thresholdBps =
-      bnToNum(ev?.consensusThresholdBps ?? ev?.consensus_threshold_bps) || 8000;
+    
 
     setFinalizing(true);
     try {
@@ -740,12 +832,16 @@ export default function EventDetail() {
       const truthQuestionPk = ev.truthQuestion;
       if (!truthQuestionPk) throw new Error("This event is not linked to a Truth Network question.");
 
+      const [collateralVault] = await findCollateralVaultPda(eventPk);
+
       const tx = await program.methods
         .fetchAndStoreWinner()
         .accounts({
           event: eventPk,
+          collateralVault,
           truthNetworkQuestion: truthQuestionPk,
           truthNetworkProgram: constants.TRUTH_NETWORK_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
         })
         .transaction();
 
@@ -760,6 +856,75 @@ export default function EventDetail() {
       setFinalizing(false);
     }
   }
+
+  function isCreator(ev) {
+    try {
+      return !!wallet?.publicKey && !!ev?.creator && wallet.publicKey.equals(ev.creator);
+    } catch {
+      return false;
+    }
+  }
+
+  function bnToBigInt(x) {
+    if (!x) return 0n;
+    if (typeof x === "bigint") return x;
+    if (typeof x?.toString === "function") return BigInt(x.toString());
+    return BigInt(String(x));
+  }
+
+  async function claimCreatorCommission() {
+    if (!walletConnected) return setClaimCreatorErr("Connect wallet to claim commission.");
+    if (!program) return;
+
+    setClaimCreatorErr("");
+    setClaimCreatorSig("");
+
+    // must be creator
+    if (!isCreator(ev)) {
+      setClaimCreatorErr("Only the event creator can claim commission.");
+      return;
+    }
+
+    // must be after betting ends
+    const now = Math.floor(Date.now() / 1000);
+    if (now < (ev?.betEndTime?.toNumber?.() ?? 0)) {
+      setClaimCreatorErr("Betting is still active. Claim is available after betting ends.");
+      return;
+    }
+
+    // must have something to claim
+    const pending = bnToBigInt(ev?.pendingCreatorCommission);
+    if (pending <= 0n) {
+      setClaimCreatorErr("Nothing to claim.");
+      return;
+    }
+
+    setClaimingCreator(true);
+    try {
+      const eventPk = new PublicKey(eventPda);
+      const [collateralVault] = await findCollateralVaultPda(eventPk);
+
+      const tx = await program.methods
+        .claimCreatorCommission()
+        .accounts({
+          creator: wallet.publicKey,
+          event: eventPk,
+          collateralVault,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      const sig = await sendAndConfirm(tx, "claimCreatorCommission");
+      setClaimCreatorSig(sig);
+      await load();
+    } catch (e) {
+      console.error("[claimCreatorCommission] failed:", e);
+      setClaimCreatorErr(e?.message || String(e));
+    } finally {
+      setClaimingCreator(false);
+    }
+  }
+
 
   if (loading) return <p>Loading...</p>;
   if (err) return <p style={{ color: "crimson" }}>{err}</p>;
@@ -840,7 +1005,7 @@ export default function EventDetail() {
           </button>
 
           <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>
-            Expected: 1 SOL → 1 TRUE + 1 FALSE
+            Expected: 1 SOL → 0.99 TRUE + 0.99 FALSE (1% fee)
           </div>
         </div>
 
@@ -862,6 +1027,25 @@ export default function EventDetail() {
         )}
       </div>
 
+      {walletConnected && (
+        <div style={{ marginTop: 10, fontSize: 13 }}>
+          {userToken.loading ? (
+            <span style={{ opacity: 0.8 }}>Checking your token balances...</span>
+          ) : hasAnyToken ? (
+            <span className="font-green">
+              You already have tokens for this event:
+              {" "}
+              TRUE: <b>{baseToUiStr(userToken.trueBalBase)}</b>,
+              {" "}
+              FALSE: <b>{baseToUiStr(userToken.falseBalBase)}</b>
+            </span>
+          ) : (
+            <span style={{ opacity: 0.8 }}>You don’t hold TRUE/FALSE tokens for this event yet.</span>
+          )}
+        </div>
+      )}
+
+
       {/* Redeem Pair UI (only while betting active) */}
       {bettingActive && (
         <div
@@ -878,55 +1062,64 @@ export default function EventDetail() {
           </div>
 
           <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
-            Redeem requires equal amounts of TRUE + FALSE. Fee: 1%. Example: 1 TRUE + 1 FALSE → 0.99 SOL.
+            Redeem requires equal amounts of TRUE + FALSE. Example: 1 TRUE + 1 FALSE = 0.99 SOL.
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
-              <input
-                value={redeemAmount}
-                onChange={(e) => setRedeemAmount(e.target.value)}
-                placeholder="e.g. 0.1"
-                style={{
-                  width: 160,
-                  padding: "10px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #ccc",
-                  outline: "none",
-                }}
-                inputMode="decimal"
-                disabled={!walletConnected}
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={() => redeemPairWhileActive(redeemAmount)}
-              disabled={loading || minting || redeeming || finalizing || postRedeeming}
-              style={{
-                marginTop: 18,
-                padding: "10px 14px",
-                borderRadius: 10,
-                border: "1px solid #111",
-                background: redeeming ? "#eee" : "#111",
-                color: redeeming ? "#111" : "#fff",
-                cursor: redeeming ? "not-allowed" : "pointer",
-              }}
-            >
-              {redeeming ? "Redeeming..." : "Redeem TRUE+FALSE → SOL"}
-            </button>
-
-            <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>
-              You burn {redeemAmount || "0"} TRUE and {redeemAmount || "0"} FALSE
-            </div>
-          </div>
-
-          {!walletConnected && (
+          {!walletConnected ? (
             <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
               Connect wallet to redeem.
             </div>
-          )}
+          ): userToken.loading ? (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+              Checking your token balances...
+            </div>
+          ): !hasBothTokens ? (
+            <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+              You need BOTH TRUE and FALSE to redeem as a pair.
+            </div>
+          ): (
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
+                <input
+                  value={redeemAmount}
+                  onChange={(e) => setRedeemAmount(e.target.value)}
+                  placeholder="e.g. 0.1"
+                  style={{
+                    width: 160,
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #ccc",
+                    outline: "none",
+                  }}
+                  inputMode="decimal"
+                  disabled={!walletConnected}
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => redeemPairWhileActive(redeemAmount)}
+                disabled={loading || minting || redeeming || finalizing || postRedeeming || !hasBothTokens} 
+                style={{
+                  marginTop: 18,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #111",
+                  background: redeeming ? "#eee" : "#111",
+                  color: redeeming ? "#111" : "#fff",
+                  cursor: redeeming ? "not-allowed" : "pointer",
+                }}
+              >
+                {redeeming ? "Redeeming..." : "Redeem TRUE+FALSE → SOL"}
+              </button>
+
+              <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>
+                You burn {redeemAmount || "0"} TRUE and {redeemAmount || "0"} FALSE
+              </div>
+            </div>
+          )
+          }
 
 
           {redeemErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{redeemErr}</div>}
@@ -954,9 +1147,53 @@ export default function EventDetail() {
               </>
             )}
           </div>
+
+          {/* Claim Commission (creator only, after betting ends) */}
+          {walletConnected && isCreator(ev) && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+                Pending creator commission:{" "}
+                <b>{baseToUiStr(ev?.pendingCreatorCommission?.toString?.() ?? "0")}</b> SOL
+              </div>
+
+              <button
+                onClick={claimCreatorCommission}
+                disabled={claimingCreator || loading || minting || redeeming || finalizing || postRedeeming}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #111",
+                  background: claimingCreator ? "#eee" : "#111",
+                  color: claimingCreator ? "#111" : "#fff",
+                  cursor: claimingCreator ? "not-allowed" : "pointer",
+                }}
+              >
+                {claimingCreator ? "Claiming..." : "Claim Commission"}
+              </button>
+
+              {claimCreatorErr && (
+                <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>
+                  {claimCreatorErr}
+                </div>
+              )}
+
+              {claimCreatorSig && (
+                <div style={{ marginTop: 10, fontSize: 13 }}>
+                  <b>TX:</b>{" "}
+                  <a
+                    href={`https://solscan.io/tx/${claimCreatorSig}?cluster=devnet`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {claimCreatorSig}
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+
         </div>
       )}
-
 
 
       {/* Event info */}
@@ -1082,7 +1319,7 @@ export default function EventDetail() {
                 Winner is <b>{winnerLabel(ev)}</b>
               </div>
               <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
-                expected: 1 <b>{winnerLabel(ev)}</b> token → ~0.99 SOL
+                expected: 1 <b>{winnerLabel(ev)}</b> token = 1 SOL
               </div>
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1101,7 +1338,7 @@ export default function EventDetail() {
                 <button
                   type="button"
                   onClick={() => redeemWinnerAfterFinal(postRedeemAmount)}
-                  disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing}
+                  disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
                   style={{
                     marginTop: 18,
                     padding: "10px 14px",
@@ -1123,7 +1360,7 @@ export default function EventDetail() {
               </div>
               <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
                  You can redeem TRUE or FALSE.
-                {" "}(expected: 1 token → ~0.49 SOL)
+                {" "}(expected: 1 token = 0.5 SOL)
               </div>
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1155,7 +1392,7 @@ export default function EventDetail() {
                 <button
                   type="button"
                   onClick={() => redeemNoWinnerAfterFinal(postRedeemAmount, postRedeemSide)}
-                  disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing}
+                  disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
                   style={{
                     marginTop: 18,
                     padding: "10px 14px",
