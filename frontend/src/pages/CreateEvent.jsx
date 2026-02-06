@@ -2,7 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
-import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from "@solana/web3.js";
+import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY, ComputeBudgetProgram, Transaction } from "@solana/web3.js";
 
 import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
@@ -26,6 +26,7 @@ import {
 } from "../lib/truthPdas";
 
 import { sendAndConfirmSafe } from "../utils/sendTx";
+import { getConstants } from "../constants";
 
 
 function toUnixSeconds(dateStr) {
@@ -33,7 +34,9 @@ function toUnixSeconds(dateStr) {
   return Math.floor(ms / 1000);
 }
 
+
 export default function CreateEvent() {
+  const { CATEGORY_OPTIONS } = getConstants();
   const wallet = useWallet();
   const nav = useNavigate();
 
@@ -45,6 +48,7 @@ export default function CreateEvent() {
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [category, setCategory] = useState(0);
 
   // prevents double submit even before React updates state
   const submitLockRef = useRef(false);
@@ -56,8 +60,40 @@ export default function CreateEvent() {
 
   async function sendAndConfirm(tx, label) {
     const conn = program.provider.connection;
-    return sendAndConfirmSafe({ conn, wallet, tx, label, simulate: null });
+
+    try {
+      return await sendAndConfirmSafe({
+        conn,
+        wallet,
+        tx,
+        label,
+        simulate: (c, t) => c.simulateTransaction(t),
+      });
+    } catch (e) {
+      console.error(`[${label}] send failed:`, e);
+      console.error("message:", e?.message);
+      console.error("name:", e?.name);
+      console.error("cause:", e?.cause);
+      console.error("logs:", e?.logs);
+      console.error("data:", e?.data);
+      throw e;
+    }
   }
+
+  async function waitForAccountReady(conn, pubkey, owner, label, timeoutMs = 15000) {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const ai = await conn.getAccountInfo(pubkey, { commitment: "confirmed" });
+      if (ai && ai.owner?.equals(owner) && ai.data?.length > 0) {
+        console.log(`[${label}] account ready`, pubkey.toBase58(), "len:", ai.data.length);
+        return;
+      }
+      await new Promise((r) => setTimeout(r, 500));
+    }
+    throw new Error(`[${label}] account not visible/ready after ${timeoutMs}ms: ${pubkey.toBase58()}`);
+  }
+
+
 
 
   async function ensureCounter() {
@@ -180,6 +216,12 @@ export default function CreateEvent() {
       return alert("Please set bet/commit/reveal times.");
     }
 
+    const cat = Number(category);
+    if (!Number.isInteger(cat) || cat < 0 || cat > 3) {
+      submitLockRef.current = false;
+      return alert("Invalid category.");
+    }
+
     setBusy(true);
     setMsg("");
 
@@ -233,7 +275,7 @@ export default function CreateEvent() {
 
       // TX #1: create_event_core
       const tx1 = await program.methods
-        .createEventCore(title.trim(), bet, commit, reveal, truthQuestionPda)
+        .createEventCore(title.trim(), cat, bet, commit, reveal, truthQuestionPda)
         .accounts({
           creator: wallet.publicKey,
           counter: counterPda,
@@ -244,18 +286,20 @@ export default function CreateEvent() {
 
       const sig1 = await sendAndConfirm(tx1, "createEventCore");
 
+      // Wait until the account exists and is owned by the program
+      await waitForAccountReady(
+        program.provider.connection,
+        eventPda,
+        program.programId,
+        "eventPda"
+      );
+
       // 4) derive PDAs for mint/vault step
       const [collateralVault] = await findCollateralVaultPda(eventPda);
       const [mintAuthority] = findMintAuthorityPda(eventPda);
       const [trueMint] = findTrueMintPda(eventPda);
       const [falseMint] = findFalseMintPda(eventPda);
 
-      console.log("[createEvent] collateralVault:", collateralVault.toBase58());
-      console.log("[createEvent] mintAuthority:", mintAuthority.toBase58());
-      console.log("[createEvent] trueMint:", trueMint.toBase58());
-      console.log("[createEvent] falseMint:", falseMint.toBase58());
-
-      // TX #2: create_event_mints
       const metadataProgram = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 
       const [trueMetadata] = PublicKey.findProgramAddressSync(
@@ -268,7 +312,8 @@ export default function CreateEvent() {
         metadataProgram
       );
 
-      const tx2 = await program.methods
+      // Create the instruction
+      const createMintsIx = await program.methods
         .createEventMints()
         .accounts({
           creator: wallet.publicKey,
@@ -284,10 +329,16 @@ export default function CreateEvent() {
           systemProgram: SystemProgram.programId,
           rent: SYSVAR_RENT_PUBKEY,
         })
-        .transaction();
+        .instruction();
 
+      const tx2 = new Transaction();
+      tx2.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 450000 })); 
+      tx2.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10000 }));
+      tx2.add(createMintsIx);
+
+      console.log("[createEvent] Sending TX #2: createEventMints...");
       const sig2 = await sendAndConfirm(tx2, "createEventMints");
-      console.log(sig2)
+      console.log("[createEvent] TX #2 Success:", sig2);
 
       setMsg(`Event created!\ncore tx: ${sig1}\nmints tx: ${sig2}`);
       nav(`/event/${eventPda.toBase58()}`);
@@ -317,6 +368,22 @@ export default function CreateEvent() {
         <label>
           Title (10-150)
           <input value={title} onChange={(e) => setTitle(e.target.value)} style={{ width: "100%" }} />
+        </label>
+
+        <label>
+          Category 
+          <select 
+            value={category}
+            onChange={(e) => setCategory(Number(e.target.value))}
+            style={{ width: "100%"}}
+            disabled={busy}
+          >
+            {CATEGORY_OPTIONS.map(opt => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label>

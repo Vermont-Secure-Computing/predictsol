@@ -11,7 +11,7 @@ export const FALLBACK_RPC_URLS = [
   "https://solana-testnet.drpc.org/",
 ];
 
-export const DEFAULT_RPC_URL = FALLBACK_RPC_URLS[0];
+export const DEFAULT_RPC_URL = FALLBACK_RPC_URLS[0];//"https://devnet.helius-rpc.com/?api-key=53dd1693-43cc-4545-880e-74fa732ab766"//
 
 export const NETWORK_NAME = "DevNet";
 export const SWITCH_LINK_LABEL = "Open in MainNet";
