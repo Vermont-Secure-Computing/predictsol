@@ -253,6 +253,10 @@
           "type": "string"
         },
         {
+          "name": "category",
+          "type": "u8"
+        },
+        {
           "name": "bet_end_time",
           "type": "i64"
         },
@@ -623,6 +627,68 @@
         {
           "name": "rent",
           "address": "SysvarRent111111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "delete_event",
+      "discriminator": [
+        103,
+        111,
+        95,
+        106,
+        232,
+        24,
+        190,
+        84
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": []
@@ -1000,6 +1066,68 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "sweep_unclaimed_to_house",
+      "discriminator": [
+        15,
+        134,
+        161,
+        46,
+        113,
+        19,
+        95,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "house_treasury",
+          "writable": true,
+          "address": "4yuDDnFAavYGyBBcWb2HkAcD5bgoZRvRJZHUgrXTWHGX"
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -1046,123 +1174,163 @@
   "errors": [
     {
       "code": 6000,
-      "name": "InvalidTitleLength",
-      "msg": "Invalid title length"
+      "name": "VotingEnded"
     },
     {
       "code": 6001,
-      "name": "InvalidBetEndTime",
-      "msg": "Invalid bet end time"
+      "name": "VotingStillActive"
     },
     {
       "code": 6002,
-      "name": "InvalidTimeOrder",
-      "msg": "Invalid time order"
+      "name": "AlreadyFinalized"
     },
     {
       "code": 6003,
-      "name": "MathOverflow",
-      "msg": "Math overflow"
+      "name": "AlreadyInitialized"
     },
     {
       "code": 6004,
-      "name": "InvalidAmount",
-      "msg": "Invalid amount"
+      "name": "AlreadyVoted"
     },
     {
       "code": 6005,
-      "name": "BettingPeriodEnded",
-      "msg": "Betting period has ended"
+      "name": "AlreadyRevealed"
     },
     {
       "code": 6006,
-      "name": "EventAlreadyResolved",
-      "msg": "Event already resolved"
+      "name": "InvalidReveal"
     },
     {
       "code": 6007,
-      "name": "InsufficientTrueBalance",
-      "msg": "Insufficient TRUE balance"
+      "name": "NotJoined"
     },
     {
       "code": 6008,
-      "name": "InsufficientFalseBalance",
-      "msg": "Insufficient FALSE balance"
+      "name": "RentNotExpiredOrVotesExist"
     },
     {
       "code": 6009,
-      "name": "VaultInsufficientFunds",
-      "msg": "Vault has insufficient funds"
+      "name": "InvalidTimeframe"
     },
     {
       "code": 6010,
-      "name": "InvalidVault",
-      "msg": "Invalid vault for this event"
+      "name": "CommitPhaseEnded"
     },
     {
       "code": 6011,
-      "name": "InvalidMint",
-      "msg": "Invalid mint for this event"
+      "name": "RevealPhaseEnded"
     },
     {
       "code": 6012,
-      "name": "InvalidTokenAccountOwner",
-      "msg": "Invalid token account owner"
+      "name": "NotEligible"
     },
     {
       "code": 6013,
-      "name": "InvalidTokenAccountMint",
-      "msg": "Invalid token account mint"
+      "name": "AlreadyClaimed"
     },
     {
       "code": 6014,
-      "name": "BettingStillActive",
-      "msg": "Betting is still active"
+      "name": "NoEligibleVoters"
     },
     {
       "code": 6015,
-      "name": "TruthQuestionMismatch",
-      "msg": "Truth question mismatch"
+      "name": "InvalidVaultAccount"
     },
     {
       "code": 6016,
-      "name": "TruthVotingStillActive",
-      "msg": "Truth voting is still active"
+      "name": "InsufficientFunds"
     },
     {
       "code": 6017,
-      "name": "InvalidWinningOption",
-      "msg": "Invalid winning option from Truth Network"
+      "name": "Overflow"
     },
     {
       "code": 6018,
-      "name": "EventNotResolved",
-      "msg": "Event is not finalized yet"
+      "name": "InsufficientMajority"
     },
     {
       "code": 6019,
-      "name": "InvalidResultStatus",
-      "msg": "Invalid result status for this action"
+      "name": "QuestionIdMismatch"
     },
     {
       "code": 6020,
-      "name": "NotWinningToken",
-      "msg": "This token is not the winning side"
+      "name": "NotPartOfVoterList"
     },
     {
       "code": 6021,
-      "name": "InvalidTruthVault",
-      "msg": "Invalid truth vault"
+      "name": "RemainingRewardExists"
     },
     {
       "code": 6022,
-      "name": "Unauthorized",
-      "msg": "Unauthorized"
+      "name": "QuestionTooShort"
     },
     {
       "code": 6023,
-      "name": "NothingToClaim",
-      "msg": "Nothing to claim"
+      "name": "RewardTooSmall"
+    },
+    {
+      "code": 6024,
+      "name": "RevealPhaseNotOver"
+    },
+    {
+      "code": 6025,
+      "name": "CannotDrainReward"
+    },
+    {
+      "code": 6026,
+      "name": "CannotDeleteQuestion"
+    },
+    {
+      "code": 6027,
+      "name": "RentNotExpired"
+    },
+    {
+      "code": 6028,
+      "name": "AlreadyEligibleOrWinner"
+    },
+    {
+      "code": 6029,
+      "name": "AlreadyDrained"
+    },
+    {
+      "code": 6030,
+      "name": "QuestionTooLong"
+    },
+    {
+      "code": 6031,
+      "name": "RejoinedAfterCommit"
+    },
+    {
+      "code": 6032,
+      "name": "AlreadyJoined"
+    },
+    {
+      "code": 6033,
+      "name": "NotInvited"
+    },
+    {
+      "code": 6034,
+      "name": "InvalidInviter"
+    },
+    {
+      "code": 6035,
+      "name": "NoInviteTokens"
+    },
+    {
+      "code": 6036,
+      "name": "AlreadyInvited"
+    },
+    {
+      "code": 6037,
+      "name": "InviteLimitReached"
+    },
+    {
+      "code": 6038,
+      "name": "ActionInProgress"
+    },
+    {
+      "code": 6039,
+      "name": "InvalidInvitee"
     }
   ],
   "types": [
@@ -1266,6 +1434,26 @@
           {
             "name": "pending_house_commission",
             "type": "u64"
+          },
+          {
+            "name": "unclaimed_swept",
+            "type": "bool"
+          },
+          {
+            "name": "swept_at",
+            "type": "i64"
+          },
+          {
+            "name": "outstanding_true",
+            "type": "u64"
+          },
+          {
+            "name": "outstanding_false",
+            "type": "u64"
+          },
+          {
+            "name": "category",
+            "type": "u8"
           }
         ]
       }

@@ -15,9 +15,17 @@ export function getConstants() {
 
   const base = import.meta.env.VITE_NETWORK === "mainnet" ? mainnet : devnet;
 
+  const CATEGORY_OPTIONS = [
+    { value: 0, label: "Other" },
+    { value: 1, label: "Finance" },
+    { value: 2, label: "Politics" },
+    { value: 3, label: "Sports" },
+  ];
+
   return {
     ...base,
     VERSION_NAME: versionName,
     AVAILABLE_VERSIONS: versionMap,
+    CATEGORY_OPTIONS
   };
 }

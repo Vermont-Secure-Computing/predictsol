@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
@@ -100,6 +100,8 @@ function baseToUiStr(baseStr, decimals = 9) {
 
 
 export default function EventDetail() {
+
+  const navigate = useNavigate();
   const { eventPda } = useParams();
   const wallet = useWallet();
 
@@ -150,7 +152,9 @@ export default function EventDetail() {
   const [claimingCreator, setClaimingCreator] = useState(false);
   const [claimCreatorErr, setClaimCreatorErr] = useState("");
   const [claimCreatorSig, setClaimCreatorSig] = useState("");
+  const [vaultLamports, setVaultLamports] = useState(0);
 
+  const [vaultMin, setVaultMin] = useState(null);
 
   // prevents double submit even before setState updates
   const buyLockRef = useRef(false);
@@ -173,6 +177,18 @@ export default function EventDetail() {
   }, [wallet.publicKey, wallet.connected])
 
 
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const v = await program.provider.connection.getMinimumBalanceForRentExemption(0);
+      if (!cancelled) setVaultMin(v);
+    })();
+    return () => { cancelled = true; };
+  }, [program?.provider?.connection]);
+
+  const VAULT_MIN = vaultMin ?? 0; // fallback
+  
+ 
   async function loadUserTokenState(evData) {
     if (!walletConnected) {
       setUserToken((s) => ({ ...s, loading: false }));
@@ -286,6 +302,12 @@ export default function EventDetail() {
 
   async function load() {
     if (!program || !eventPda) return;
+
+     const conn = program.provider.connection;
+    console.log("RPC:", conn.rpcEndpoint);
+    console.log("Balance:", await conn.getBalance(wallet.publicKey));
+    console.log("Genesis:", await conn.getGenesisHash());
+
     setErr("");
     setLoading(true);
     try {
@@ -336,6 +358,40 @@ export default function EventDetail() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [program, eventPda]);
 
+  useEffect(() => {
+    const conn = program?.provider?.connection;
+    const vault = ev?.collateralVault;
+    if (!conn || !vault) return;
+
+    let cancelled = false;
+    let subId;
+
+    (async () => {
+      try {
+        const bal = await conn.getBalance(vault, "confirmed");
+        if (!cancelled) setVaultLamports(bal);
+
+        subId = conn.onAccountChange(
+          vault,
+          (accInfo) => {
+            console.log("accInfo lamports: ", accInfo.lamports)
+            if (!cancelled) setVaultLamports(accInfo.lamports);
+          },
+          "confirmed"
+        );
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+      if (subId != null) {
+        conn.removeAccountChangeListener(subId);
+      }
+    };
+  }, [program?.provider?.connection, ev?.collateralVault?.toBase58?.()]);
+
+
+
   const toDate = (bnOrNum) => {
     const n = bnOrNum?.toNumber?.() ?? bnOrNum;
     return n ? new Date(n * 1000).toLocaleString() : "-";
@@ -346,6 +402,106 @@ export default function EventDetail() {
     const now = Math.floor(Date.now() / 1000);
     return now < ev.betEndTime.toNumber();
   }
+
+  const UNCLAIMED_SWEEP_DELAY_SECS = 10 * 60;
+
+  const resolvedAt = Number(ev?.resolvedAt?.toNumber?.() ?? ev?.resolvedAt ?? 0);
+  const sweepAfterTs = resolvedAt > 0 ? resolvedAt + UNCLAIMED_SWEEP_DELAY_SECS : 0;
+  const afterWindow = resolvedAt > 0 && now >= resolvedAt + UNCLAIMED_SWEEP_DELAY_SECS;
+
+  const totalIssuedZero = BigInt(ev?.totalIssuedPerSide?.toString?.() || "0") === 0n;
+  const vaultEmpty = vaultLamports <= VAULT_MIN;
+
+  const outstandingTrue = BigInt(ev?.outstanding_true?.toString?.() ?? "0");
+  const outstandingFalse = BigInt(ev?.outstanding_false?.toString?.() ?? "0");
+  const outstandingZero = (outstandingTrue === 0n && outstandingFalse === 0n);
+
+  const canDeleteByPhase = !afterWindow ?
+    (vaultEmpty && outstandingZero)
+    : (vaultEmpty && (ev?.unclaimedSwept || outstandingZero))
+
+
+  console.log("vaultMin: ", vaultMin)
+  console.log("VAULT_MIN: ", VAULT_MIN)
+  console.log("after window: ", !afterWindow)
+  console.log("total issued is 0: ", totalIssuedZero)
+  console.log("after window: ", afterWindow)
+  console.log("unclaimed swept: ", ev?.unclaimedSwept)
+  console.log("outstandingZero: ",outstandingZero)
+  console.log("vaultEmpty: ",vaultEmpty)
+  console.log("should show delete: ", (afterWindow && vaultEmpty && (ev?.unclaimedSwept || outstandingZero)))
+  console.log("canDeleteByPhase: ", canDeleteByPhase)
+
+  const sweepReady =
+    ev?.resolved &&
+    !ev?.unclaimedSwept &&
+    now >= sweepAfterTs;
+  console.log("sweep ready: ", sweepReady)
+
+  const vaultHasSweepable = vaultLamports > VAULT_MIN;
+  console.log("vaultHasSweepable: ", vaultHasSweepable)
+
+  const pendingCreatorCommissionBase = BigInt(ev?.pendingCreatorCommission?.toString?.() || "0");
+  const pendingHouseCommissionBase = BigInt(ev?.pendingHouseCommission?.toString?.() || "0");
+
+  const creatorCommissionZero = pendingCreatorCommissionBase === 0n;
+  console.log("creatorCommissionZero: ", creatorCommissionZero)
+  const houseCommissionZero = pendingHouseCommissionBase === 0n;
+  console.log("houseCommissionZero: ", houseCommissionZero)
+
+  function isTruthDeletable() {
+    const committedVoters = Number(truthQ?.committedVoters ?? truthQ?.committed_voters ?? 0);
+    const voterRecordsCount = Number(truthQ?.voterRecordsCount ?? truthQ?.voter_records_count ?? 0);
+    const voterRecordsClosed = Number(truthQ?.voterRecordsClosed ?? truthQ?.voter_records_closed ?? 0);
+    const totalDistributed = BigInt((truthQ?.totalDistributed ?? truthQ?.total_distributed ?? 0).toString?.() ?? String(truthQ?.totalDistributed ?? truthQ?.total_distributed ?? 0));
+    const snapshotReward = BigInt((truthQ?.snapshotReward ?? truthQ?.snapshot_reward ?? 0).toString?.() ?? String(truthQ?.snapshotReward ?? truthQ?.snapshot_reward ?? 0));
+    const originalReward = BigInt((truthQ?.originalReward ?? truthQ?.original_reward ?? 0).toString?.() ?? String(truthQ?.originalReward ?? truthQ.original_reward ?? 0));
+    const allVoterRecordsClosed = voterRecordsCount === 0 || voterRecordsClosed === voterRecordsCount;
+    const rewardsSettled = totalDistributed >= snapshotReward || originalReward === 0n;
+
+    return (
+      committedVoters === 0 ||
+      (allVoterRecordsClosed && rewardsSettled)
+    );         
+    
+  } 
+
+  const showSweepButton =
+    walletConnected &&
+    sweepReady &&
+    vaultHasSweepable &&
+    creatorCommissionZero;
+  console.log("showSweepButton: ", showSweepButton)
+
+  const showDeleteEventButton =
+    walletConnected &&
+    isCreator(ev) &&
+    !!ev?.resolved &&
+    creatorCommissionZero &&
+    houseCommissionZero &&
+    canDeleteByPhase &&
+    isTruthDeletable()
+  console.log("truth q: ", truthQ)
+  console.log("is truth deletable: ", isTruthDeletable())
+  console.log("show delete event button: ", showDeleteEventButton)
+
+  console.log("walletConnedted: ", walletConnected)
+  console.log("isCreator: ", isCreator(ev))
+  console.log("ev?.resolved: ", ev?.resolved)
+  console.log("creatorCommissionZero: ", creatorCommissionZero)
+  console.log("pendingHouseCommissionBase: ", pendingHouseCommissionBase)
+  console.log("vault lamports is less than vault min: ", vaultLamports <= VAULT_MIN)
+  
+
+
+  console.log("pendingCreatorCommission: ", BigInt(ev?.pendingCreatorCommission?.toString?.() || "0"))
+  console.log("pendingCreatorCommission: ", BigInt(ev?.pendingCreatorCommission?.toString?.() || "0") === 0n)
+  console.log("vault lamports: ", vaultLamports)
+  console.log("totalIssuedPerSide: ", BigInt(ev?.totalIssuedPerSide?.toString?.() || "0"))
+  console.log("totalIssuedPerSide: ", BigInt(ev?.totalIssuedPerSide?.toString?.() || "0") === 0n)
+
+
+
 
   async function ensureAta(mint, owner) {
     if (!walletConnected) throw new Error("Connect wallet to ceate ATA.")
@@ -767,17 +923,19 @@ export default function EventDetail() {
   /**
    * finalize voting helpers
    */
-  function canGetResult(ev) {
-    if (!ev) return false;
+  function canGetResult(ev, truthQ) {
+    if (!ev || !truthQ) return false;
+
     const now = Math.floor(Date.now() / 1000);
 
     // must be closed
     const bettingClosed = now >= ev.betEndTime.toNumber();
-
+    // must be greater than reveal end time
+    const revealEnded = now >= truthQ.revealEndTime.toNumber();
     // must not be resolved yet
     const notResolved = !ev.resolved;
 
-    return bettingClosed && notResolved;
+    return bettingClosed && revealEnded && notResolved;
   }
 
   function truthRevealEnded(truthQ) {
@@ -798,7 +956,7 @@ export default function EventDetail() {
     setFinalizeErr("");
     setFinalizeSig("");
 
-    if (!canGetResult(ev)) {
+    if (!canGetResult(ev, truthQ)) {
       setFinalizeErr("Result is not available yet.");
       return;
     }
@@ -926,16 +1084,87 @@ export default function EventDetail() {
   }
 
 
+  async function handleSweepUnclaimed() {
+    try {
+      const eventPk = new PublicKey(eventPda);
+      const [collateralVault] = await findCollateralVaultPda(eventPk);
+
+      const tx = await program.methods
+        .sweepUnclaimedToHouse()
+        .accounts({
+          event: eventPk,
+          collateralVault,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      await sendAndConfirm(tx, "sweepUnclaimedToHouse");
+      await load();
+    } catch (e) {
+      console.error("[sweep] failed:", e);
+    }
+  }
+
+  async function handleDeleteEvent() {
+    try {
+      const eventPk = new PublicKey(eventPda);
+      const [collateralVault] = await findCollateralVaultPda(eventPk);
+
+      const tx = await program.methods
+        .deleteEvent()
+        .accounts({
+          creator: wallet.publicKey,
+          event: eventPk,
+          collateralVault,
+          systemProgram: SystemProgram.programId,
+        })
+        .transaction();
+
+      await sendAndConfirm(tx, "deleteEvent");
+
+      // optional: redirect back to events list
+      navigate("/");
+    } catch (e) {
+      console.error("[deleteEvent] failed:", e);
+    }
+  }
+
+
+
   if (loading) return <p>Loading...</p>;
   if (err) return <p style={{ color: "crimson" }}>{err}</p>;
   if (!ev) return null;
 
   const bettingActive = isBettingActive(ev);
 
+  function categoryLabel(cat) {
+   
+    if (typeof cat?.toNumber === "function") {
+      console.log("category is a function")
+      const n = cat.toNumber();
+      return constants.CATEGORY_OPTIONS.find(o => o.value === n)?.label ?? `Unknown (${n})`;
+    }
+    if (typeof cat === "number") {
+      console.log("category is a number")
+      return constants.CATEGORY_OPTIONS.find(o => o.value === cat)?.label ?? `Unknown (${cat})`;
+    }
+
+    if (cat && typeof cat === "object") {
+      console.log("category is an object")
+      const key = Object.keys(cat)[0];
+      if (!key) return "Unknown";
+      return key[0].toUpperCase() + key.slice(1);
+    }
+
+    return "Unknown";
+  }
+
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>Event Detail</h2>
+        <h2 style={{ margin: 0 }}>{ev.title}</h2>
+        
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           {!walletConnected && (
             <span style={{ fontSize: 12, opacity: 0.75 }}>
@@ -946,7 +1175,9 @@ export default function EventDetail() {
             {loading ? "Refreshing..." : "Refresh"}
           </button>
         </div>
+        
       </div>
+      <div><b>Category:</b> {categoryLabel(ev.category)}</div>
 
       {/* Buy Tokens UI */}
       <div
@@ -1149,7 +1380,7 @@ export default function EventDetail() {
           </div>
 
           {/* Claim Commission (creator only, after betting ends) */}
-          {walletConnected && isCreator(ev) && (
+          {walletConnected && isCreator(ev) && pendingCreatorCommissionBase > 0n && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
                 Pending creator commission:{" "}
@@ -1195,11 +1426,45 @@ export default function EventDetail() {
         </div>
       )}
 
+      {ev?.resolved && !ev?.unclaimedSwept && (
+        <div className="mt-4 p-4 rounded-lg bg-yellow-50 border border-yellow-300">
+          <p className="text-sm text-yellow-800">
+            Unclaimed SOL will be swept to the House in{" "}
+            <strong>
+              {Math.max(0, sweepAfterTs - now)} seconds
+            </strong>.
+          </p>
+
+          {showSweepButton && (
+            <button
+              onClick={handleSweepUnclaimed}
+              className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+            >
+              Sweep Unclaimed SOL to House
+            </button>
+          )}
+        </div>
+      )}
+
+      {showDeleteEventButton && (
+        <div className="mt-6 p-4 rounded-lg bg-red-50 border border-red-300">
+          <p className="text-sm text-red-800 mb-2">
+            This event is fully settled and can be deleted.
+          </p>
+
+          <button
+            onClick={handleDeleteEvent}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
+          >
+            Delete Event
+          </button>
+        </div>
+      )}
+
 
       {/* Event info */}
       <div style={{ marginTop: 14, padding: 12, border: "1px solid #ddd", borderRadius: 8 }}>
         <div><b>PDA:</b> {ev.pk.toBase58()}</div>
-        <div><b>Title:</b> {ev.title}</div>
         <div><b>Creator:</b> {ev.creator.toBase58()}</div>
 
         <hr style={{ margin: "12px 0" }} />
@@ -1214,6 +1479,10 @@ export default function EventDetail() {
         <div><b>Collateral vault:</b> {ev.collateralVault.toBase58()}</div>
         <div><b>Total collateral:</b> {ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div>
         <div><b>Total issued/side:</b> {ev.totalIssuedPerSide?.toString?.() ?? "0"}</div>
+        <div><b>Pending creator commission:</b> {baseToUiStr(ev?.pendingCreatorCommission?.toString?.() ?? "0")} SOL</div>
+        <div><b>Pending house commission:</b> {baseToUiStr(ev?.pendingHouseCommission?.toString?.() ?? "0")} SOL</div>
+        <div><b>Truth commission sent:</b> {baseToUiStr(ev?.totalTruthCommissionSent?.toString?.() ?? "0")} SOL</div>
+
 
         <hr style={{ margin: "12px 0" }} />
 
@@ -1237,6 +1506,12 @@ export default function EventDetail() {
         </div>
 
         <div style={{ marginTop: 6 }}>
+          <b>Votes:</b>{" "}
+          TRUE {bnToStr(ev.votesOption1 ?? ev.votes_option_1)} - FALSE {bnToStr(ev.votesOption2 ?? ev.votes_option_2)}
+        </div>
+
+
+        <div style={{ marginTop: 6 }}>
           <b>Threshold:</b> {pctFromBps(ev.consensusThresholdBps)}%
         </div>
 
@@ -1247,7 +1522,7 @@ export default function EventDetail() {
       </div>
 
       {/* Get Result UI */}
-      {canGetResult(ev) && !ev.resolved && (
+      {canGetResult(ev, truthQ) && !ev.resolved && (
         <div
           style={{
             marginTop: 14,

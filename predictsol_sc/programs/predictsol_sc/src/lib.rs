@@ -45,11 +45,18 @@ pub const RESULT_FINALIZED_NO_VOTES: u8 = 2;
 pub const RESULT_FINALIZED_TIE: u8 = 3;
 pub const RESULT_FINALIZED_BELOW_THRESHOLD: u8 = 4;
 
-pub const REDEEM_FEE_BPS: u64 = 100; // 1.00%
+pub const REDEEM_FEE_BPS: u64 = 0; // no more fee on redeem
+
+pub const UNCLAIMED_SWEEP_DELAY_SECS: i64 = 10 * 60; //15 * 24 * 60 * 60; // 15 days 
 
 // uri token metadata
-pub const TRUE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreid3dy6vqafcoc6rj6xduhvh6at3scdkrzgh4v7atpbsubvmbf7u3i";
-pub const FALSE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreic5zxpclijkcyy2lh3u4hmzqrii4f4h532paopotyj4bn2erlia34";
+pub const TRUE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreicy7hmfoqp2capsz5f4lsr5nbqtyhldofl2xbrkcaynudw3qqbhiq";
+pub const FALSE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreieywt5nxjcrcibmdedwssrpkygln57h3ddq656azeuexp7dbxl2fa";
+
+#[inline(always)]
+fn vault_keep_lamports() -> Result<u64> {
+    Ok(Rent::get()?.minimum_balance(0) as u64)
+}
 
 #[inline(never)]
 fn create_system_pda_0space<'info>(
@@ -58,27 +65,49 @@ fn create_system_pda_0space<'info>(
     system_program: &AccountInfo<'info>,
     signer_seeds: &[&[u8]],
 ) -> Result<()> {
-    if pda.lamports() != 0 {
+    let required_lamports = Rent::get()?.minimum_balance(0) as u64;
+    let current = pda.lamports();
+
+    // Already funded enough: nothing to do.
+    if current >= required_lamports {
         return Ok(());
     }
 
-    let rent = Rent::get()?;
-    let lamports = rent.minimum_balance(0);
+    // PDA does not exist yet (0 lamports) -> create it rent-exempt.
+    if current == 0 {
+        invoke_signed(
+            &system_instruction::create_account(
+                payer.key,
+                pda.key,
+                required_lamports,
+                0, // 0 space
+                &anchor_lang::solana_program::system_program::ID,
+            ),
+            &[
+                payer.clone(),
+                pda.clone(),
+                system_program.clone(),
+            ],
+            &[signer_seeds],
+        )?;
+        return Ok(());
+    }
 
-    invoke_signed(
-        &system_instruction::create_account(
-            payer.key,
-            pda.key,
-            lamports,
-            0,
-            &anchor_lang::solana_program::system_program::ID,
-        ),
-        &[payer.clone(), pda.clone(), system_program.clone()],
-        &[signer_seeds],
+    // PDA already exists but is underfunded -> top up with a transfer.
+    let top_up = required_lamports.saturating_sub(current);
+
+    anchor_lang::solana_program::program::invoke(
+        &system_instruction::transfer(payer.key, pda.key, top_up),
+        &[
+            payer.clone(),
+            pda.clone(),
+            system_program.clone(),
+        ],
     )?;
 
     Ok(())
 }
+
 
 #[inline(never)]
 fn create_and_init_spl_mint_pda<'info>(
@@ -230,6 +259,16 @@ pub struct CreateMetadataAccountArgsV3 {
     pub collection_details: Option<CollectionDetails>,
 }
 
+
+// For the event category
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, PartialEq, Eq)]
+pub enum Category {
+    Politics = 0,
+    Finance = 1,
+    Sports = 2,
+    Other = 3,
+}
+
 // ============================================================
 // Create event, create mint, buy token and mint token helpers
 // ============================================================
@@ -349,10 +388,10 @@ fn sweep_house_commission<'info>(
     }
 
     // rent safety
-    let rent_min = Rent::get()?.minimum_balance(0) as u64;
+    let keep = vault_keep_lamports()?;
     let vault_lamports = collateral_vault.lamports();
     require!(
-        vault_lamports >= rent_min.saturating_add(amount),
+        vault_lamports >= keep.saturating_add(amount),
         PredictError::VaultInsufficientFunds
     );
 
@@ -427,6 +466,16 @@ fn apply_accounting(
         .checked_add(deposited)
         .ok_or(PredictError::MathOverflow)?;
 
+    ev.outstanding_true = ev
+        .outstanding_true
+        .checked_add(net)
+        .ok_or(PredictError::MathOverflow)?;
+
+    ev.outstanding_false = ev
+        .outstanding_false
+        .checked_add(net)
+        .ok_or(PredictError::MathOverflow)?;
+
     ev.total_issued_per_side = ev
         .total_issued_per_side
         .checked_add(net)
@@ -450,6 +499,25 @@ fn apply_accounting(
     Ok(())
 }
 
+fn no_outstanding_tokens(ev: &Event) -> bool {
+    if !ev.resolved {
+        return ev.outstanding_true == 0 && ev.outstanding_false == 0;
+    }
+
+    // Winner case: only winning side must be fully redeemed
+    if ev.result_status == RESULT_RESOLVED_WINNER {
+        return match ev.winning_option {
+            1 => ev.outstanding_true == 0,
+            2 => ev.outstanding_false == 0,
+            _ => false,
+        };
+    }
+
+    // No-winner cases: allow delete only if both sides redeemed
+    ev.outstanding_true == 0 && ev.outstanding_false == 0
+}
+
+
 
 // ======================================================
 // PROGRAM
@@ -467,6 +535,7 @@ pub mod predictol_sc {
     pub fn create_event_core(
         ctx: Context<CreateEventCore>,
         title: String,
+        category: u8,
         bet_end_time: i64,
         commit_end_time: i64,
         reveal_end_time: i64,
@@ -478,6 +547,7 @@ pub mod predictol_sc {
         require!(bet_end_time > now, PredictError::InvalidBetEndTime);
         require!(bet_end_time < commit_end_time, PredictError::InvalidTimeOrder);
         require!(commit_end_time < reveal_end_time, PredictError::InvalidTimeOrder);
+        require!(category <= 3, PredictError::InvalidCategory);
 
         let counter = &mut ctx.accounts.counter;
         let event_id = counter.count;
@@ -486,6 +556,7 @@ pub mod predictol_sc {
         ev.creator = ctx.accounts.creator.key();
         ev.event_id = event_id;
         ev.title = title;
+        ev.category = category;
         ev.bet_end_time = bet_end_time;
         ev.commit_end_time = commit_end_time;
         ev.reveal_end_time = reveal_end_time;
@@ -493,6 +564,8 @@ pub mod predictol_sc {
         ev.truth_question = truth_question.unwrap_or_default();
         ev.total_collateral_lamports = 0;
         ev.total_issued_per_side = 0;
+        ev.outstanding_true = 0;
+        ev.outstanding_false = 0;
         ev.resolved = false;
         ev.winning_option = 0;
         ev.winning_percent_bps = 0;
@@ -504,7 +577,8 @@ pub mod predictol_sc {
         ev.total_truth_commission_sent = 0;
         ev.pending_creator_commission = 0;
         ev.pending_house_commission = 0;
-
+        ev.unclaimed_swept = false;
+        ev.swept_at = 0;
 
         counter.count = counter.count.checked_add(1).ok_or(PredictError::MathOverflow)?;
 
@@ -629,7 +703,7 @@ pub mod predictol_sc {
         invoke_signed(
             &ix,
             &[
-                ctx.accounts.metadata_program.to_account_info(),
+                //ctx.accounts.metadata_program.to_account_info(),
                 ctx.accounts.true_metadata.to_account_info(),
                 ctx.accounts.true_mint.to_account_info(),
                 ctx.accounts.mint_authority.to_account_info(),
@@ -656,7 +730,7 @@ pub mod predictol_sc {
         invoke_signed(
             &ix,
             &[
-                ctx.accounts.metadata_program.to_account_info(),
+                //ctx.accounts.metadata_program.to_account_info(),
                 ctx.accounts.false_metadata.to_account_info(),
                 ctx.accounts.false_mint.to_account_info(),
                 ctx.accounts.mint_authority.to_account_info(),
@@ -768,11 +842,11 @@ pub mod predictol_sc {
         // Identify the "zero-line"— the amount of money that must stay 
         // in the account so it isn't deleted by the network.
         // Fetches the current rent configuration from the Solana network
-        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let keep = vault_keep_lamports()?;
         let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
 
         require!(
-            vault_lamports >= rent_min.saturating_add(payout),
+            vault_lamports >= keep.saturating_add(payout),
             PredictError::VaultInsufficientFunds
         );
 
@@ -806,8 +880,18 @@ pub mod predictol_sc {
             .checked_sub(payout)
             .ok_or(PredictError::MathOverflow)?;
 
-        ctx.accounts.event.total_issued_per_side = ctx.accounts.event
-            .total_issued_per_side
+        // ctx.accounts.event.total_issued_per_side = ctx.accounts.event
+        //     .total_issued_per_side
+        //     .checked_sub(amount)
+        //     .ok_or(PredictError::MathOverflow)?;
+
+        ctx.accounts.event.outstanding_true = ctx.accounts.event
+            .outstanding_true
+            .checked_sub(amount)
+            .ok_or(PredictError::MathOverflow)?;
+
+        ctx.accounts.event.outstanding_false = ctx.accounts.event
+            .outstanding_false
             .checked_sub(amount)
             .ok_or(PredictError::MathOverflow)?;
 
@@ -908,6 +992,7 @@ pub mod predictol_sc {
         // Store result into PredictSol event
         ev.winning_option = q.winning_option;
         ev.result_status = RESULT_RESOLVED_WINNER;
+        ev.swept_at = 0;
 
         Ok(())
     }
@@ -919,6 +1004,7 @@ pub mod predictol_sc {
         let ev = &mut ctx.accounts.event;
         require!(ev.resolved, PredictError::EventNotResolved);
         require!(ev.result_status == RESULT_RESOLVED_WINNER, PredictError::InvalidResultStatus);
+        require!(!ev.unclaimed_swept, PredictError::RedemptionExpired);
 
         // Determine which token mint is winning
         let winning_mint = if ev.winning_option == 1 {
@@ -948,14 +1034,29 @@ pub mod predictol_sc {
             amount,
         )?;
 
+        match ev.winning_option {
+            1 => {
+                ev.outstanding_true = ev.outstanding_true.checked_sub(amount).ok_or(PredictError::MathOverflow)?;
+            }
+            2 => {
+                ev.outstanding_false = ev.outstanding_false.checked_sub(amount).ok_or(PredictError::MathOverflow)?;
+            }
+            _ => return err!(PredictError::InvalidWinningOption),
+        }
+
+        // ev.total_issued_per_side = ev
+        //     .total_issued_per_side
+        //     .checked_sub(amount)
+        //     .ok_or(PredictError::MathOverflow)?;
+
         // payout = amount minus fee (e.g. 1.0 -> 0.99)
         let payout = payout_after_fee(amount)?;
 
         // Rent safety
-        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let keep = vault_keep_lamports()?;
         let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
         require!(
-            vault_lamports >= rent_min.saturating_add(payout),
+            vault_lamports >= keep.saturating_add(payout),
             PredictError::VaultInsufficientFunds
         );
 
@@ -991,6 +1092,7 @@ pub mod predictol_sc {
 
         let ev = &mut ctx.accounts.event;
         require!(ev.resolved, PredictError::EventNotResolved);
+        require!(!ev.unclaimed_swept, PredictError::RedemptionExpired);
 
         // result status must be a no votes, tie or below threshold
         // must not equal to RESULT_RESOLVED_WINNER 
@@ -1019,15 +1121,30 @@ pub mod predictol_sc {
             amount,
         )?;
 
-        // here we pay half (since redeeming only one side. example 1 TRUE = 0.495 SOL) minus the commission
+        // ev.total_issued_per_side = ev
+        //     .total_issued_per_side
+        //     .checked_sub(amount)
+        //     .ok_or(PredictError::MathOverflow)?;
+
+        match side {
+            1 => {
+                ev.outstanding_true = ev.outstanding_true.checked_sub(amount).ok_or(PredictError::MathOverflow)?;
+            }
+            2 => {
+                ev.outstanding_false = ev.outstanding_false.checked_sub(amount).ok_or(PredictError::MathOverflow)?;
+            }
+            _ => return err!(PredictError::InvalidWinningOption),
+        }
+
+        // here we pay half (since redeeming only one side. example 1 TRUE = 0.5 SOL)
         let pair_payout = payout_after_fee(amount)?;
         let payout = pair_payout.checked_div(2).ok_or(PredictError::MathOverflow)?;
 
         // rent safety
-        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let keep = vault_keep_lamports()?;
         let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
         require!(
-            vault_lamports >= rent_min.saturating_add(payout),
+            vault_lamports >= keep.saturating_add(payout),
             PredictError::VaultInsufficientFunds
         );
 
@@ -1066,9 +1183,9 @@ pub mod predictol_sc {
         require!(amount > 0, PredictError::NothingToClaim);
 
         // rent safety
-        let rent_min = Rent::get()?.minimum_balance(0) as u64;
+        let keep = vault_keep_lamports()?;
         let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
-        require!(vault_lamports >= rent_min.saturating_add(amount), PredictError::VaultInsufficientFunds);
+        require!(vault_lamports >= keep.saturating_add(amount), PredictError::VaultInsufficientFunds);
 
         // transfer
         let event_key = ev.key();
@@ -1087,9 +1204,108 @@ pub mod predictol_sc {
         Ok(())
     }
 
+    pub fn sweep_unclaimed_to_house(ctx: Context<SweepUnclaimedToHouse>) -> Result<()> {
+        let ev = &mut ctx.accounts.event;
+        let now = Clock::get()?.unix_timestamp;
 
+        require!(ev.resolved, PredictError::EventNotResolved);
+        require!(!ev.unclaimed_swept, PredictError::AlreadySwept);
 
+        // only after X days
+        require!(
+            now >= ev.resolved_at.saturating_add(UNCLAIMED_SWEEP_DELAY_SECS),
+            PredictError::SweepNotYetAvailable
+        );
 
+        let vault_ai = ctx.accounts.collateral_vault.to_account_info();
+        let keep = vault_keep_lamports()?;
+
+        let vault_lamports = vault_ai.lamports();
+        require!(vault_lamports > keep, PredictError::NothingToSweep);
+
+        let amount = vault_lamports.saturating_sub(keep);
+        require!(amount > 0, PredictError::NothingToSweep);
+        
+        let vault_bump = ctx.bumps.collateral_vault;
+
+        transfer_from_collateral_vault(
+            &vault_ai,
+            &ctx.accounts.house_treasury.to_account_info(),
+            &ctx.accounts.system_program.to_account_info(),
+            &ev.key(),
+            vault_bump,
+            amount,
+        )?;
+
+        ev.total_collateral_lamports = ev.total_collateral_lamports.saturating_sub(amount);
+        ev.unclaimed_swept = true;
+        ev.swept_at = now;
+
+        Ok(())
+    }
+
+    pub fn delete_event(ctx: Context<DeleteEvent>) -> Result<()> {
+        let ev = &ctx.accounts.event;
+        let now = Clock::get()?.unix_timestamp;
+
+        require!(ev.resolved, PredictError::EventNotResolved);
+        require_keys_eq!(ctx.accounts.creator.key(), ev.creator, PredictError::Unauthorized);
+
+        require!(ev.pending_creator_commission == 0, PredictError::CreatorCommissionNotClaimed);
+        require!(ev.pending_house_commission == 0, PredictError::HouseCommissionNotCleared);
+
+        // compute keep
+        let keep = vault_keep_lamports()?;
+        let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
+
+        let resolved_at = ev.resolved_at;
+        require!(resolved_at > 0, PredictError::InvalidResolvedAt);
+
+        let after_window = now >= resolved_at.saturating_add(UNCLAIMED_SWEEP_DELAY_SECS);
+        let no_outstanding = no_outstanding_tokens(ev);
+        let vault_empty = vault_lamports <= keep;
+
+        if !after_window {
+            // BEFORE window: strict, only deletable if no one ever bought / all burned if no winner / winning side - all burned
+            require!(no_outstanding, PredictError::OutstandingTokens);
+            require!(vault_empty, PredictError::VaultNotEmpty);
+        } else {
+            // AFTER window:
+            // - if sweep happened, ok (tokens may exist but is expired)
+            // - if sweep not happened, only allow when there is nothing to sweep (vault empty) and no outstanding tokens
+            if !ev.unclaimed_swept {
+                require!(no_outstanding, PredictError::OutstandingTokens);
+                require!(vault_empty, PredictError::VaultNotEmpty);
+            }
+        }
+
+        // Always require vault empty (only rent/keep allowed)
+        require!(vault_empty, PredictError::VaultNotEmpty);
+        
+
+        // drain last lamports (close the vault)
+        if vault_lamports > 0 {
+            let event_key = ctx.accounts.event.key();
+            let vault_bump = ctx.bumps.collateral_vault;
+            let seeds: [&[u8]; 3] = [SEED_COLLATERAL_VAULT, event_key.as_ref(), &[vault_bump]];
+
+            invoke_signed(
+                &system_instruction::transfer(
+                    ctx.accounts.collateral_vault.key,
+                    ctx.accounts.creator.key,
+                    vault_lamports,
+                ),
+                &[
+                    ctx.accounts.collateral_vault.to_account_info(),
+                    ctx.accounts.creator.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+                &[&seeds],
+            )?;
+        }
+
+        Ok(())
+    }
 
 }
 
@@ -1132,6 +1348,13 @@ pub struct Event {
     pub total_truth_commission_sent: u64,
     pub pending_creator_commission: u64,
     pub pending_house_commission: u64,
+
+    pub unclaimed_swept: bool,
+    pub swept_at: i64,
+
+    pub outstanding_true: u64,
+    pub outstanding_false: u64,
+    pub category: u8,
 }
 
 // ======================================================
@@ -1152,7 +1375,7 @@ pub struct CreateEventCore<'info> {
     pub creator: Signer<'info>,
     #[account(mut)]
     pub counter: Account<'info, EventCounter>,
-    #[account(init, payer = creator, space = 8 + 1024, seeds = [SEED_EVENT, creator.key().as_ref(), &counter.count.to_le_bytes()], bump)]
+    #[account(init, payer = creator, space = 8 + (296 + 1 + 154), seeds = [SEED_EVENT, creator.key().as_ref(), &counter.count.to_le_bytes()], bump)]
     pub event: Account<'info, Event>,
     pub system_program: Program<'info, System>,
 }
@@ -1192,7 +1415,6 @@ pub struct CreateEventMints<'info> {
     /// CHECK: Metaplex metadata PDA for FALSE mint
     #[account(mut, seeds = [b"metadata", METADATA_PROGRAM_ID.as_ref(), false_mint.key().as_ref()], bump, seeds::program = METADATA_PROGRAM_ID )]
     pub false_metadata: UncheckedAccount<'info>,
-
 
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
@@ -1398,6 +1620,49 @@ pub struct ClaimCreatorCommission<'info> {
     pub system_program: Program<'info, System>,
 }
 
+#[derive(Accounts)]
+pub struct SweepUnclaimedToHouse<'info> {
+    #[account(mut)]
+    pub event: Account<'info, Event>,
+
+    /// CHECK: Fixed house wallet
+    #[account(mut, address = HOUSE_WALLET)]
+    pub house_treasury: AccountInfo<'info>,
+
+    /// CHECK: Collateral vault PDA
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump
+    )]
+    pub collateral_vault: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct DeleteEvent<'info> {
+    #[account(mut)]
+    pub creator: Signer<'info>,
+
+    #[account(
+        mut,
+        close = creator,
+        constraint = event.creator == creator.key() @ PredictError::Unauthorized
+    )]
+    pub event: Account<'info, Event>,
+
+    /// CHECK: Collateral vault PDA
+    #[account(
+        mut,
+        seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
+        bump
+    )]
+    pub collateral_vault: AccountInfo<'info>,
+
+    pub system_program: Program<'info, System>,
+}
+
 
 // ======================================================
 // ERRORS
@@ -1452,6 +1717,28 @@ pub enum PredictError {
     Unauthorized,
     #[msg("Nothing to claim")]
     NothingToClaim,
+    #[msg("Unclaimed sweep not yet available")]
+    SweepNotYetAvailable,
+    #[msg("Nothing to sweep")]
+    NothingToSweep,
+    #[msg("Event still has outstanding tokens")]
+    OutstandingTokens,
+    #[msg("Vault is not empty")]
+    VaultNotEmpty,
+    #[msg("Sweep is not ready yet")]
+    SweepNotReady,
+    #[msg("Already swept")]
+    AlreadySwept,
+    #[msg("Creator commission must be claimed first")]
+    CreatorCommissionNotClaimed,
+    #[msg("House commission not cleared")]
+    HouseCommissionNotCleared,
+    #[msg("Redemption window expired (unclaimed funds swept)")]
+    RedemptionExpired,
+    #[msg("Invalid category")]
+    InvalidCategory,
+    #[msg("Invalid resolved_at timestamp")]
+    InvalidResolvedAt,
 }
 
 
