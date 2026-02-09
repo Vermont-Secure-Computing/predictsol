@@ -50,7 +50,7 @@ pub const REDEEM_FEE_BPS: u64 = 0; // no more fee on redeem
 pub const UNCLAIMED_SWEEP_DELAY_SECS: i64 = 10 * 60; //15 * 24 * 60 * 60; // 15 days 
 
 // uri token metadata
-pub const TRUE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreicy7hmfoqp2capsz5f4lsr5nbqtyhldofl2xbrkcaynudw3qqbhiq";
+pub const TRUE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreihwrwcaodgkzekrb5zjbeh43mnrnryjvtpqaclccxzxv3jnrl2nnq";
 pub const FALSE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreieywt5nxjcrcibmdedwssrpkygln57h3ddq656azeuexp7dbxl2fa";
 
 #[inline(always)]

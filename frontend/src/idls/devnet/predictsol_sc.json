@@ -1174,163 +1174,178 @@
   "errors": [
     {
       "code": 6000,
-      "name": "VotingEnded"
+      "name": "InvalidTitleLength",
+      "msg": "Invalid title length"
     },
     {
       "code": 6001,
-      "name": "VotingStillActive"
+      "name": "InvalidBetEndTime",
+      "msg": "Invalid bet end time"
     },
     {
       "code": 6002,
-      "name": "AlreadyFinalized"
+      "name": "InvalidTimeOrder",
+      "msg": "Invalid time order"
     },
     {
       "code": 6003,
-      "name": "AlreadyInitialized"
+      "name": "MathOverflow",
+      "msg": "Math overflow"
     },
     {
       "code": 6004,
-      "name": "AlreadyVoted"
+      "name": "InvalidAmount",
+      "msg": "Invalid amount"
     },
     {
       "code": 6005,
-      "name": "AlreadyRevealed"
+      "name": "BettingPeriodEnded",
+      "msg": "Betting period has ended"
     },
     {
       "code": 6006,
-      "name": "InvalidReveal"
+      "name": "EventAlreadyResolved",
+      "msg": "Event already resolved"
     },
     {
       "code": 6007,
-      "name": "NotJoined"
+      "name": "InsufficientTrueBalance",
+      "msg": "Insufficient TRUE balance"
     },
     {
       "code": 6008,
-      "name": "RentNotExpiredOrVotesExist"
+      "name": "InsufficientFalseBalance",
+      "msg": "Insufficient FALSE balance"
     },
     {
       "code": 6009,
-      "name": "InvalidTimeframe"
+      "name": "VaultInsufficientFunds",
+      "msg": "Vault has insufficient funds"
     },
     {
       "code": 6010,
-      "name": "CommitPhaseEnded"
+      "name": "InvalidVault",
+      "msg": "Invalid vault for this event"
     },
     {
       "code": 6011,
-      "name": "RevealPhaseEnded"
+      "name": "InvalidMint",
+      "msg": "Invalid mint for this event"
     },
     {
       "code": 6012,
-      "name": "NotEligible"
+      "name": "InvalidTokenAccountOwner",
+      "msg": "Invalid token account owner"
     },
     {
       "code": 6013,
-      "name": "AlreadyClaimed"
+      "name": "InvalidTokenAccountMint",
+      "msg": "Invalid token account mint"
     },
     {
       "code": 6014,
-      "name": "NoEligibleVoters"
+      "name": "BettingStillActive",
+      "msg": "Betting is still active"
     },
     {
       "code": 6015,
-      "name": "InvalidVaultAccount"
+      "name": "TruthQuestionMismatch",
+      "msg": "Truth question mismatch"
     },
     {
       "code": 6016,
-      "name": "InsufficientFunds"
+      "name": "TruthVotingStillActive",
+      "msg": "Truth voting is still active"
     },
     {
       "code": 6017,
-      "name": "Overflow"
+      "name": "InvalidWinningOption",
+      "msg": "Invalid winning option from Truth Network"
     },
     {
       "code": 6018,
-      "name": "InsufficientMajority"
+      "name": "EventNotResolved",
+      "msg": "Event is not finalized yet"
     },
     {
       "code": 6019,
-      "name": "QuestionIdMismatch"
+      "name": "InvalidResultStatus",
+      "msg": "Invalid result status for this action"
     },
     {
       "code": 6020,
-      "name": "NotPartOfVoterList"
+      "name": "NotWinningToken",
+      "msg": "This token is not the winning side"
     },
     {
       "code": 6021,
-      "name": "RemainingRewardExists"
+      "name": "InvalidTruthVault",
+      "msg": "Invalid truth vault"
     },
     {
       "code": 6022,
-      "name": "QuestionTooShort"
+      "name": "Unauthorized",
+      "msg": "Unauthorized"
     },
     {
       "code": 6023,
-      "name": "RewardTooSmall"
+      "name": "NothingToClaim",
+      "msg": "Nothing to claim"
     },
     {
       "code": 6024,
-      "name": "RevealPhaseNotOver"
+      "name": "SweepNotYetAvailable",
+      "msg": "Unclaimed sweep not yet available"
     },
     {
       "code": 6025,
-      "name": "CannotDrainReward"
+      "name": "NothingToSweep",
+      "msg": "Nothing to sweep"
     },
     {
       "code": 6026,
-      "name": "CannotDeleteQuestion"
+      "name": "OutstandingTokens",
+      "msg": "Event still has outstanding tokens"
     },
     {
       "code": 6027,
-      "name": "RentNotExpired"
+      "name": "VaultNotEmpty",
+      "msg": "Vault is not empty"
     },
     {
       "code": 6028,
-      "name": "AlreadyEligibleOrWinner"
+      "name": "SweepNotReady",
+      "msg": "Sweep is not ready yet"
     },
     {
       "code": 6029,
-      "name": "AlreadyDrained"
+      "name": "AlreadySwept",
+      "msg": "Already swept"
     },
     {
       "code": 6030,
-      "name": "QuestionTooLong"
+      "name": "CreatorCommissionNotClaimed",
+      "msg": "Creator commission must be claimed first"
     },
     {
       "code": 6031,
-      "name": "RejoinedAfterCommit"
+      "name": "HouseCommissionNotCleared",
+      "msg": "House commission not cleared"
     },
     {
       "code": 6032,
-      "name": "AlreadyJoined"
+      "name": "RedemptionExpired",
+      "msg": "Redemption window expired (unclaimed funds swept)"
     },
     {
       "code": 6033,
-      "name": "NotInvited"
+      "name": "InvalidCategory",
+      "msg": "Invalid category"
     },
     {
       "code": 6034,
-      "name": "InvalidInviter"
-    },
-    {
-      "code": 6035,
-      "name": "NoInviteTokens"
-    },
-    {
-      "code": 6036,
-      "name": "AlreadyInvited"
-    },
-    {
-      "code": 6037,
-      "name": "InviteLimitReached"
-    },
-    {
-      "code": 6038,
-      "name": "ActionInProgress"
-    },
-    {
-      "code": 6039,
-      "name": "InvalidInvitee"
+      "name": "InvalidResolvedAt",
+      "msg": "Invalid resolved_at timestamp"
     }
   ],
   "types": [
