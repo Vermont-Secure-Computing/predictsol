@@ -1,0 +1,6 @@
+{
+    "name": "YES – Localhost Test Event",
+    "symbol": "YES",
+    "description": "Local development YES token",
+    "image": "http://localhost:5173/images/yes.png"
+  }
