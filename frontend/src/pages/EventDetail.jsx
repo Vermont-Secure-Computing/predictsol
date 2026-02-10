@@ -93,15 +93,28 @@ function getEventStatus(ev, nowTs) {
 function statusClasses(color) {
   switch (color) {
     case "green":
-      return "bg-green-50 border-green-200 text-green-700";
+      return [
+        "bg-green-50 border-green-200 text-green-700",
+        "dark:bg-green-900/20 dark:border-green-900/40 dark:text-green-200",
+      ].join(" ");
     case "yellow":
-      return "bg-yellow-50 border-yellow-200 text-yellow-700";
+      return [
+        "bg-yellow-50 border-yellow-200 text-yellow-800",
+        "dark:bg-yellow-900/20 dark:border-yellow-900/40 dark:text-yellow-200",
+      ].join(" ");
     case "blue":
-      return "bg-blue-50 border-blue-200 text-blue-700";
+      return [
+        "bg-blue-50 border-blue-200 text-blue-700",
+        "dark:bg-blue-900/20 dark:border-blue-900/40 dark:text-blue-200",
+      ].join(" ");
     default:
-      return "bg-gray-50 border-gray-200 text-gray-700";
+      return [
+        "bg-gray-50 border-gray-200 text-gray-700",
+        "dark:bg-gray-900/40 dark:border-gray-800 dark:text-gray-200",
+      ].join(" ");
   }
 }
+
 
 
 function winnerLabel(ev) {
@@ -127,6 +140,10 @@ function baseToUiStr(baseStr, decimals = 9) {
   return `${whole.toString()}.${fracStr}`;
 }
 
+const shortTxMid = (sig, left = 12, right = 12) =>
+  sig && sig.length > left + right
+    ? `${sig.slice(0, left)}…${sig.slice(-right)}`
+    : sig;
 
 
 export default function EventDetail() {
@@ -1161,8 +1178,6 @@ export default function EventDetail() {
   if (loading) return <p>Loading...</p>;
   if (err) return <p style={{ color: "crimson" }}>{err}</p>;
   if (!ev) return null;
-  console.log("ev: ", ev)
-  console.log("RESULT: ", RESULT)
 
   const bettingActive = isBettingActive(ev);
 
@@ -1188,20 +1203,20 @@ export default function EventDetail() {
     return "Unknown";
   }
 
-
   return (
-    <div className="flex justify-center w-full pr-2 md:pr-0 mb-6 md:overflow-x-hidden min-h-screen bg-white">
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90">
       <div className="mx-auto w-full max-w-6xl px-4 py-6">
         {/* Header row */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900 break-words">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900 dark:text-white dark:text-white break-words">
               {ev.title}
             </h1>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-              <span className="inline-flex items-center rounded-full border border-gray-200 px-2.5 py-1">
-                Category: <span className="ml-1 font-medium text-gray-900">{categoryLabel(ev.category)}</span>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1
+                 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-200">
+                Category: <span className="ml-1 font-medium text-gray-900 dark:text-white dark:text-white">{categoryLabel(ev.category)}</span>
               </span>
 
               {(() => {
@@ -1221,7 +1236,8 @@ export default function EventDetail() {
 
 
               {!walletConnected && (
-                <span className="inline-flex items-center rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700
+                 dark:bg-gray-900/60 dark:text-gray-300 dark:border dark:border-gray-800">
                   Read-only mode (connect wallet to interact)
                 </span>
               )}
@@ -1232,7 +1248,7 @@ export default function EventDetail() {
             <button
               onClick={load}
               disabled={loading || minting || redeeming || finalizing || postRedeeming}
-              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 disabled:opacity-50"
             >
               {loading ? "Refreshing..." : "Refresh"}
             </button>
@@ -1243,77 +1259,88 @@ export default function EventDetail() {
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* LEFT: 2/3 content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Market / Outcome header card*/}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-
-              {/* Optional: add rules/description block here later */}
-              <div className="mt-3 text-sm text-gray-600">
-                {/* Example: "This market resolves to TRUE if ..." */}
+            {/* Market / Outcome header card
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
+              <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                {/* Example: "This market resolves to TRUE if ..." 
               </div>
-            </div>
+            </div>*/}
 
             {/* Event info / Details (this is your big info block, styled nicer) */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
               <div className="flex items-center justify-between">
-                <div className="text-base font-semibold text-gray-900">Event details</div>
+                <div className="text-base font-semibold text-gray-900 dark:text-white">Event details</div>
                 <div className="text-xs text-gray-500">On-chain references</div>
               </div>
 
               <div className="mt-4 space-y-3 text-sm">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Event PDA</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.pk.toBase58()}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.pk.toBase58()}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Creator</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.creator.toBase58()}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.creator.toBase58()}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">TRUE mint</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.trueMint?.toBase58?.() ?? "-"}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.trueMint?.toBase58?.() ?? "-"}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">FALSE mint</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.falseMint?.toBase58?.() ?? "-"}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.falseMint?.toBase58?.() ?? "-"}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Betting end</div>
-                    <div className="mt-1 text-gray-900">{toDate(ev.betEndTime)}</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.betEndTime)}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Commit end</div>
-                    <div className="mt-1 text-gray-900">{toDate(ev.commitEndTime)}</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.commitEndTime)}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Reveal end</div>
-                    <div className="mt-1 text-gray-900">{toDate(ev.revealEndTime)}</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.revealEndTime)}</div>
                   </div>
                 </div>
 
-                <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                   <div className="text-xs text-gray-500">Collateral vault</div>
-                  <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.collateralVault.toBase58()}</div>
+                  <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.collateralVault.toBase58()}</div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Total collateral</div>
-                    <div className="mt-1 text-gray-900">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Issued / side</div>
-                    <div className="mt-1 text-gray-900">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Winning Threshold</div>
-                    <div className="mt-1 text-gray-900">{pctFromBps(ev.consensusThresholdBps)}%</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{pctFromBps(ev.consensusThresholdBps)}%</div>
                   </div>
                 </div>
 
@@ -1326,26 +1353,27 @@ export default function EventDetail() {
             <div className="space-y-4 lg:sticky lg:top-6">
 
               {/* Winner / status banner */}
-              <div className="rounded-xl border border-gray-200 p-4 bg-green-50">
-                <div className="text-sm text-gray-600">Market</div>
-                <div className="mt-1 text-base font-semibold text-gray-900">{resultLabel(ev)}</div>
+              <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm
+                dark:border-green-900/40 dark:bg-green-900/20 dark:backdrop-blur">
+                <div className="text-sm text-gray-600 dark:text-gray-300">Market</div>
+                <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{resultLabel(ev)}</div>
 
                 {ev?.resolved && (
-                  <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600">
+                  <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600 dark:text-gray-600">
                     Outcome: <span className="font-semibold">{winnerLabel(ev)}</span>
                     {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER ? (
-                      <span className="text-gray-600"> · {pctFromBps(ev.winningPercentBps)}%</span>
+                      <span className="text-gray-600 dark:text-gray-900"> · {pctFromBps(ev.winningPercentBps)}%</span>
                     ) : null}
 
                     <div>
-                      <span className="text-xs text-gray-500">Votes: </span>
-                      <span className="text-xs text-gray-900">
+                      <span className="text-xs text-gray-600 dark:text-gray-600">Votes: </span>
+                      <span className="text-xs text-gray-900 dark:text-gray-900">
                         TRUE {bnToStr(ev.votesOption1 ?? ev.votes_option_1)} — FALSE {bnToStr(ev.votesOption2 ?? ev.votes_option_2)}
                       </span>
                     </div>
                     <div>
-                      <span className="text-xs text-gray-500">Winning Percentage: </span>
-                      <span className="text-xs text-gray-900">
+                      <span className="text-xs text-gray-600 dark:text-gray-600">Winning Percentage: </span>
+                      <span className="text-xs text-gray-900 dark:text-gray-900">
                         {pctFromBps(ev.winningPercentBps)}%
                       </span>
                     </div>
@@ -1355,23 +1383,25 @@ export default function EventDetail() {
 
               {/* Wallet token balances hint*/}
               {walletConnected && (
-                <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4 text-sm">
+                <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur text-sm">
                   {userToken.loading ? (
-                    <span className="text-gray-600">Checking your token balances...</span>
+                    <span className="text-gray-600 dark:text-gray-300">Checking your token balances...</span>
                   ) : hasAnyToken ? (
                     <span className="text-green-700">
                       You already have tokens for this event: TRUE <b>{baseToUiStr(userToken.trueBalBase)}</b>, FALSE{" "}
                       <b>{baseToUiStr(userToken.falseBalBase)}</b>
                     </span>
                   ) : (
-                    <span className="text-gray-600">You don’t hold TRUE/FALSE tokens for this event yet.</span>
+                    <span className="text-gray-600 dark:text-gray-300">You don’t hold TRUE/FALSE tokens for this event yet.</span>
                   )}
                 </div>
               )}
 
               {/* ACTIONS block */}
               {/* 1) Buy Tokens */}
-              {bettingActive && (<div className="rounded-xl border border-gray-200 bg-white p-4">
+              {bettingActive && (<div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
                 {/* === START: Buy Tokens UI === */}
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
                   Buy Tokens (Deposit SOL → Receive TRUE + FALSE)
@@ -1384,14 +1414,9 @@ export default function EventDetail() {
                       value={solAmount}
                       onChange={(e) => setSolAmount(e.target.value)}
                       placeholder="e.g. 0.1"
-                      style={{
-                        width: 160,
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #ccc",
-                        outline: "none",
-                        background: "white"
-                      }}
+                      className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                        focus:ring-2 focus:ring-indigo-500
+                        dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
                       inputMode="decimal"
                       disabled={!bettingActive || !walletConnected}
                     />
@@ -1402,10 +1427,11 @@ export default function EventDetail() {
                     disabled={!walletConnected || !bettingActive || minting || loading || redeeming || finalizing || postRedeeming}
                     className={`
                       mt-4 px-4 py-2 rounded-lg font-medium text-white transition
-                      ${postRedeeming
-                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                      ${minting
+                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
                         : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
                     `}
+
                   >
                     {minting ? "Processing..." : "Buy TRUE + FALSE"}
                   </button>
@@ -1426,9 +1452,16 @@ export default function EventDetail() {
                 {mintSig && (
                   <div style={{ marginTop: 10, fontSize: 13 }}>
                     <b>TX:</b>{" "}
-                    <a href={`https://solscan.io/tx/${mintSig}?cluster=devnet`} target="_blank" rel="noreferrer">
-                      {mintSig}
+                    <a
+                      href={`https://solscan.io/tx/${mintSig}?cluster=devnet`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
+                      title={mintSig}
+                    >
+                      {shortTxMid(mintSig)}
                     </a>
+
                   </div>
                 )}
                 {/* === END: Buy Tokens UI === */}
@@ -1436,7 +1469,8 @@ export default function EventDetail() {
 
               {/* 2) Redeem while active (if active) */}
               {bettingActive && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
                   {/* Redeem Pair UI (only while betting active) */}
     
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>
@@ -1467,14 +1501,9 @@ export default function EventDetail() {
                           value={redeemAmount}
                           onChange={(e) => setRedeemAmount(e.target.value)}
                           placeholder="e.g. 0.1"
-                          style={{
-                            width: 160,
-                            padding: "10px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #ccc",
-                            outline: "none",
-                            background: "white"
-                          }}
+                          className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                            focus:ring-2 focus:ring-indigo-500
+                            dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
                           inputMode="decimal"
                           disabled={!walletConnected}
                         />
@@ -1486,10 +1515,11 @@ export default function EventDetail() {
                         disabled={loading || minting || redeeming || finalizing || postRedeeming || !hasBothTokens} 
                         className={`
                           mt-4 px-4 py-2 rounded-lg font-medium text-white transition
-                          ${postRedeeming
-                            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                          ${minting
+                            ? "bg-gray-300 text-gray-600 cursor-not-allowed"
                             : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
                         `}
+
                       >
                         {redeeming ? "Redeeming..." : "Redeem TRUE+FALSE → SOL"}
                       </button>
@@ -1507,8 +1537,13 @@ export default function EventDetail() {
                   {redeemSig && (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <b>TX:</b>{" "}
-                      <a href={`https://solscan.io/tx/${redeemSig}?cluster=devnet`} target="_blank" rel="noreferrer">
-                        {redeemSig}
+                      <a 
+                        href={`https://solscan.io/tx/${redeemSig}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
+                      >
+                        {shortTxMid(redeemSig)}
                       </a>
                     </div>
                   )}
@@ -1517,8 +1552,9 @@ export default function EventDetail() {
               )}
 
               {/* 3) Get Result / Finalize (if available) */}
-              {canGetResult(ev) && !ev.resolved && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+              {canGetResult(ev, truthQ) && !ev.resolved && (
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>Get Result (Finalize Truth + Store Winner)</div>
 
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
@@ -1569,7 +1605,8 @@ export default function EventDetail() {
 
               {/* 4) Post-finalize redeem */}
               {bettingClosed && ev.resolved && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4 text-gray-600">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur text-gray-600 dark:text-gray-300">
                   {hasWinner(ev) ? (
                     <>
                       <div style={{ fontWeight: 700, marginBottom: 8 }}>
@@ -1586,7 +1623,9 @@ export default function EventDetail() {
                             value={postRedeemAmount}
                             onChange={(e) => setPostRedeemAmount(e.target.value)}
                             placeholder="e.g. 0.1"
-                            style={{ width: 160, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", outline: "none", backgroundColor: "white" }}
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
                             inputMode="decimal"
                             disabled={!walletConnected}
                           />
@@ -1623,7 +1662,9 @@ export default function EventDetail() {
                           <select
                             value={postRedeemSide}
                             onChange={(e) => setPostRedeemSide(e.target.value)}
-                            style={{ width: 160, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", outline: "none", background: "white" }}
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
                             disabled={!walletConnected}
                           >
                             <option value="TRUE">TRUE</option>
@@ -1637,7 +1678,9 @@ export default function EventDetail() {
                             value={postRedeemAmount}
                             onChange={(e) => setPostRedeemAmount(e.target.value)}
                             placeholder="e.g. 0.1"
-                            style={{ width: 160, padding: "10px 12px", borderRadius: 8, border: "1px solid #ccc", outline: "none", background: "white" }}
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
                             inputMode="decimal"
                             disabled={!walletConnected}
                           />
@@ -1647,15 +1690,12 @@ export default function EventDetail() {
                           type="button"
                           onClick={() => redeemNoWinnerAfterFinal(postRedeemAmount, postRedeemSide)}
                           disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
-                          style={{
-                            marginTop: 18,
-                            padding: "10px 14px",
-                            borderRadius: 10,
-                            border: "1px solid #111",
-                            background: postRedeeming ? "#eee" : "#111",
-                            color: postRedeeming ? "#111" : "#fff",
-                            cursor: postRedeeming ? "not-allowed" : "pointer",
-                          }}
+                          className={`
+                            mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                            ${postRedeeming
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                          `}
                         >
                           {postRedeeming ? "Redeeming..." : `Redeem ${postRedeemSide} → SOL`}
                         </button>
@@ -1674,8 +1714,13 @@ export default function EventDetail() {
                   {postRedeemSig && (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <b>TX:</b>{" "}
-                      <a href={`https://solscan.io/tx/${postRedeemSig}?cluster=devnet`} target="_blank" rel="noreferrer">
-                        {postRedeemSig}
+                      <a 
+                        href={`https://solscan.io/tx/${postRedeemSig}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
+                      >
+                        {shortTxMid(postRedeemSig)}
                       </a>
                     </div>
                   )}
@@ -1684,7 +1729,8 @@ export default function EventDetail() {
 
               {/* 5) Claim commission (creator) */}
               {walletConnected && isCreator(ev) && bettingClosed && ev.resolved && pendingCreatorCommissionBase > 0n && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
                   <div style={{ fontWeight: 700 }}>Event finalized</div>
                   <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>
                     Outcome: <b>{resultLabel(ev)}</b> — {winnerLabel(ev)}
