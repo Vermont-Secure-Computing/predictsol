@@ -8,7 +8,7 @@ import EventDetail from "./pages/EventDetail";
 export default function App() {
   return (
     <BrowserRouter>
-      <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ padding: 16, width: "100%", margin: "0 auto" }}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <nav style={{ display: "flex", gap: 12 }}>
             <Link to="/">Events</Link>
