@@ -74,6 +74,49 @@ function resultLabel(ev) {
   }
 }
 
+function getEventStatus(ev, nowTs) {
+  if (!ev) return { label: "Unknown", color: "gray" };
+
+  const now = nowTs ?? Math.floor(Date.now() / 1000);
+
+  if (ev.resolved) {
+    return { label: "Finalized", color: "blue" };
+  }
+
+  if (now < Number(ev.betEndTime)) {
+    return { label: "Active", color: "green" };
+  }
+
+  return { label: "Waiting for Resolution", color: "yellow" };
+}
+
+function statusClasses(color) {
+  switch (color) {
+    case "green":
+      return [
+        "bg-green-50 border-green-200 text-green-700",
+        "dark:bg-green-900/20 dark:border-green-900/40 dark:text-green-200",
+      ].join(" ");
+    case "yellow":
+      return [
+        "bg-yellow-50 border-yellow-200 text-yellow-800",
+        "dark:bg-yellow-900/20 dark:border-yellow-900/40 dark:text-yellow-200",
+      ].join(" ");
+    case "blue":
+      return [
+        "bg-blue-50 border-blue-200 text-blue-700",
+        "dark:bg-blue-900/20 dark:border-blue-900/40 dark:text-blue-200",
+      ].join(" ");
+    default:
+      return [
+        "bg-gray-50 border-gray-200 text-gray-700",
+        "dark:bg-gray-900/40 dark:border-gray-800 dark:text-gray-200",
+      ].join(" ");
+  }
+}
+
+
+
 function winnerLabel(ev) {
   const opt = Number(ev?.winningOption ?? 0);
   if (!ev?.resolved) return "-";
@@ -97,6 +140,10 @@ function baseToUiStr(baseStr, decimals = 9) {
   return `${whole.toString()}.${fracStr}`;
 }
 
+const shortTxMid = (sig, left = 12, right = 12) =>
+  sig && sig.length > left + right
+    ? `${sig.slice(0, left)}…${sig.slice(-right)}`
+    : sig;
 
 
 export default function EventDetail() {
@@ -143,8 +190,8 @@ export default function EventDetail() {
     falseAta: null,
     trueExists: false,
     falseExists: false,
-    trueBalBase: "0",   // string base units
-    falseBalBase: "0",  // string base units
+    trueBalBase: "0", 
+    falseBalBase: "0",
     loading: false,
     err: "",
   });
@@ -281,11 +328,9 @@ export default function EventDetail() {
           });
         }
 
-        return sim; // ok
+        return sim; 
       } catch (e) {
         last = e;
-
-        // if it's not an "invalid arguments" signature mismatch, stop retrying
         const msg = (e?.message || String(e)).toLowerCase();
         if (!msg.includes("invalid arguments")) throw e;
       }
@@ -564,7 +609,6 @@ export default function EventDetail() {
       return;
     }
 
-    // must have linked truth question loaded (because we need its vault)
     if (!ev?.truthQuestion) {
       buyLockRef.current = false;
       setMintErr("This event is not linked to a Truth Network question.");
@@ -615,8 +659,8 @@ export default function EventDetail() {
           falseMint,
           userTrueAta,
           userFalseAta,
-          truthNetworkQuestion: ev.truthQuestion, // already a Pubkey in your ev data
-          truthNetworkVault: truthVaultPk,        // from truthQ
+          truthNetworkQuestion: ev.truthQuestion, 
+          truthNetworkVault: truthVaultPk,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
@@ -1159,29 +1203,41 @@ export default function EventDetail() {
     return "Unknown";
   }
 
-
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90">
       <div className="mx-auto w-full max-w-6xl px-4 py-6">
         {/* Header row */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900 break-words">
+            <h1 className="text-xl sm:text-2xl font-semibold tracking-tight text-gray-900 dark:text-white dark:text-white break-words">
               {ev.title}
             </h1>
 
-            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-              <span className="inline-flex items-center rounded-full border border-gray-200 px-2.5 py-1">
-                Category: <span className="ml-1 font-medium text-gray-900">{categoryLabel(ev.category)}</span>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+              <span className="inline-flex items-center rounded-full border border-gray-200 bg-white px-2.5 py-1
+                 dark:border-gray-800 dark:bg-gray-900/60 dark:text-gray-200">
+                Category: <span className="ml-1 font-medium text-gray-900 dark:text-white dark:text-white">{categoryLabel(ev.category)}</span>
               </span>
 
-              {/* optional: status chip */}
-              <span className="inline-flex items-center rounded-full border border-gray-200 px-2.5 py-1">
-                Status: <span className="ml-1 font-medium text-gray-900">{resultLabel(ev)}</span>
-              </span>
+              {(() => {
+                const st = getEventStatus(ev, now);
+                return (
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${statusClasses(
+                      st.color
+                    )}`}
+                  >
+                    <span className="h-2 w-2 rounded-full bg-current opacity-70" />
+                    {st.label}
+                  </span>
+
+                );
+              })()}
+
 
               {!walletConnected && (
-                <span className="inline-flex items-center rounded-full bg-gray-50 px-2.5 py-1 text-xs text-gray-700">
+                <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-1 text-xs text-gray-700
+                 dark:bg-gray-900/60 dark:text-gray-300 dark:border dark:border-gray-800">
                   Read-only mode (connect wallet to interact)
                 </span>
               )}
@@ -1192,7 +1248,7 @@ export default function EventDetail() {
             <button
               onClick={load}
               disabled={loading || minting || redeeming || finalizing || postRedeeming}
-              className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 hover:bg-gray-50 disabled:opacity-50"
+              className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 disabled:opacity-50"
             >
               {loading ? "Refreshing..." : "Refresh"}
             </button>
@@ -1203,135 +1259,153 @@ export default function EventDetail() {
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {/* LEFT: 2/3 content */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Market / Outcome header card (Polymarket-ish) */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-gray-600">
-                  {/* You can swap this for “Ends in …” countdown later */}
-                  Bet ends: <span className="font-medium text-gray-900">{toDate(ev.betEndTime)}</span>
-                </div>
-
-                {ev?.resolved && (
-                  <div className="inline-flex items-center rounded-lg bg-green-50 px-3 py-1.5 text-sm font-medium text-green-800 border border-green-200">
-                    Outcome: {winnerLabel(ev)} {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER ? `(${pctFromBps(ev.winningPercentBps)}%)` : ""}
-                  </div>
-                )}
+            {/* Market / Outcome header card
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
+              <div className="mt-3 text-sm text-gray-600 dark:text-gray-300">
+                {/* Example: "This market resolves to TRUE if ..." 
               </div>
-
-              {/* Optional: add rules/description block here later */}
-              <div className="mt-3 text-sm text-gray-600">
-                {/* Placeholder like Polymarket “Rules/Context” */}
-                {/* Example: "This market resolves to TRUE if ..." */}
-              </div>
-            </div>
+            </div>*/}
 
             {/* Event info / Details (this is your big info block, styled nicer) */}
-            <div className="rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
+            <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
               <div className="flex items-center justify-between">
-                <div className="text-base font-semibold text-gray-900">Event details</div>
+                <div className="text-base font-semibold text-gray-900 dark:text-white">Event details</div>
                 <div className="text-xs text-gray-500">On-chain references</div>
               </div>
 
               <div className="mt-4 space-y-3 text-sm">
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Event PDA</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.pk.toBase58()}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.pk.toBase58()}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Creator</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.creator.toBase58()}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.creator.toBase58()}</div>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">TRUE mint</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.trueMint?.toBase58?.() ?? "-"}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.trueMint?.toBase58?.() ?? "-"}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">FALSE mint</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.falseMint?.toBase58?.() ?? "-"}</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.falseMint?.toBase58?.() ?? "-"}</div>
                   </div>
-                </div>
-
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                    <div className="text-xs text-gray-500">Commit end</div>
-                    <div className="mt-1 text-gray-900">{toDate(ev.commitEndTime)}</div>
-                  </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                    <div className="text-xs text-gray-500">Reveal end</div>
-                    <div className="mt-1 text-gray-900">{toDate(ev.revealEndTime)}</div>
-                  </div>
-                </div>
-
-                <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                  <div className="text-xs text-gray-500">Collateral vault</div>
-                  <div className="mt-1 font-mono text-xs text-gray-900 break-all">{ev.collateralVault.toBase58()}</div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                    <div className="text-xs text-gray-500">Total collateral</div>
-                    <div className="mt-1 text-gray-900">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Betting end</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.betEndTime)}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                    <div className="text-xs text-gray-500">Issued / side</div>
-                    <div className="mt-1 text-gray-900">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Commit end</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.commitEndTime)}</div>
                   </div>
-                  <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                    <div className="text-xs text-gray-500">Threshold</div>
-                    <div className="mt-1 text-gray-900">{pctFromBps(ev.consensusThresholdBps)}%</div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Reveal end</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.revealEndTime)}</div>
                   </div>
                 </div>
 
-                {/* Keep any other info lines you have below — this section is intentionally “details-heavy” like Kalshi */}
-                <div className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                  <div className="text-xs text-gray-500">Votes</div>
-                  <div className="mt-1 text-gray-900">
-                    TRUE {bnToStr(ev.votesOption1 ?? ev.votes_option_1)} — FALSE {bnToStr(ev.votesOption2 ?? ev.votes_option_2)}
+                <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="text-xs text-gray-500">Collateral vault</div>
+                  <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.collateralVault.toBase58()}</div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Total collateral</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Issued / side</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div>
+                  </div>
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Winning Threshold</div>
+                    <div className="mt-1 text-gray-900 dark:text-white">{pctFromBps(ev.consensusThresholdBps)}%</div>
                   </div>
                 </div>
+
               </div>
             </div>
-
-            {/* Optional: Rules/Comments tabs like Polymarket later */}
-            {/* <RulesCard /> <CommentsCard /> */}
           </div>
 
-          {/* RIGHT: actions rail (sticky on desktop) */}
+          {/* RIGHT: actions */}
           <div className="lg:col-span-1">
             <div className="space-y-4 lg:sticky lg:top-6">
-              {/* Winner / status banner (like Polymarket top box) */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <div className="text-sm text-gray-600">Market</div>
-                <div className="mt-1 text-base font-semibold text-gray-900">{resultLabel(ev)}</div>
+
+              {/* Winner / status banner */}
+              <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm
+                dark:border-green-900/40 dark:bg-green-900/20 dark:backdrop-blur">
+                <div className="text-sm text-gray-600 dark:text-gray-300">Market</div>
+                <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{resultLabel(ev)}</div>
 
                 {ev?.resolved && (
-                  <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm">
+                  <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600 dark:text-gray-600">
                     Outcome: <span className="font-semibold">{winnerLabel(ev)}</span>
                     {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER ? (
-                      <span className="text-gray-600"> · {pctFromBps(ev.winningPercentBps)}%</span>
+                      <span className="text-gray-600 dark:text-gray-900"> · {pctFromBps(ev.winningPercentBps)}%</span>
                     ) : null}
+
+                    <div>
+                      <span className="text-xs text-gray-600 dark:text-gray-600">Votes: </span>
+                      <span className="text-xs text-gray-900 dark:text-gray-900">
+                        TRUE {bnToStr(ev.votesOption1 ?? ev.votes_option_1)} — FALSE {bnToStr(ev.votesOption2 ?? ev.votes_option_2)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-xs text-gray-600 dark:text-gray-600">Winning Percentage: </span>
+                      <span className="text-xs text-gray-900 dark:text-gray-900">
+                        {pctFromBps(ev.winningPercentBps)}%
+                      </span>
+                    </div>
                   </div>
                 )}
               </div>
 
-              {/* ACTIONS: move your existing blocks here */}
+              {/* Wallet token balances hint*/}
+              {walletConnected && (
+                <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur text-sm">
+                  {userToken.loading ? (
+                    <span className="text-gray-600 dark:text-gray-300">Checking your token balances...</span>
+                  ) : hasAnyToken ? (
+                    <span className="text-green-700">
+                      You already have tokens for this event: TRUE <b>{baseToUiStr(userToken.trueBalBase)}</b>, FALSE{" "}
+                      <b>{baseToUiStr(userToken.falseBalBase)}</b>
+                    </span>
+                  ) : (
+                    <span className="text-gray-600 dark:text-gray-300">You don’t hold TRUE/FALSE tokens for this event yet.</span>
+                  )}
+                </div>
+              )}
+
+              {/* ACTIONS block */}
               {/* 1) Buy Tokens */}
-              <div className="rounded-xl border border-gray-200 bg-white p-4">
-                {/* paste your “Buy Tokens UI” block content here, but remove its outer border/background */}
-                {/* === START: your Buy Tokens UI inner content === */}
+              {bettingActive && (<div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
+                {/* === START: Buy Tokens UI === */}
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
                   Buy Tokens (Deposit SOL → Receive TRUE + FALSE)
                 </div>
-
-                {!bettingActive && (
-                  <div style={{ fontSize: 12, color: "crimson", marginBottom: 10 }}>
-                    Betting period ended — buying is disabled.
-                  </div>
-                )}
 
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1340,13 +1414,9 @@ export default function EventDetail() {
                       value={solAmount}
                       onChange={(e) => setSolAmount(e.target.value)}
                       placeholder="e.g. 0.1"
-                      style={{
-                        width: 160,
-                        padding: "10px 12px",
-                        borderRadius: 8,
-                        border: "1px solid #ccc",
-                        outline: "none",
-                      }}
+                      className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                        focus:ring-2 focus:ring-indigo-500
+                        dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
                       inputMode="decimal"
                       disabled={!bettingActive || !walletConnected}
                     />
@@ -1355,15 +1425,13 @@ export default function EventDetail() {
                   <button
                     onClick={() => buyTokens(solAmount)}
                     disabled={!walletConnected || !bettingActive || minting || loading || redeeming || finalizing || postRedeeming}
-                    style={{
-                      marginTop: 18,
-                      padding: "10px 14px",
-                      borderRadius: 10,
-                      border: "1px solid #111",
-                      background: minting ? "#eee" : "#111",
-                      color: minting ? "#111" : "#fff",
-                      cursor: minting ? "not-allowed" : "pointer",
-                    }}
+                    className={`
+                      mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                      ${minting
+                        ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                        : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                    `}
+
                   >
                     {minting ? "Processing..." : "Buy TRUE + FALSE"}
                   </button>
@@ -1384,80 +1452,383 @@ export default function EventDetail() {
                 {mintSig && (
                   <div style={{ marginTop: 10, fontSize: 13 }}>
                     <b>TX:</b>{" "}
-                    <a href={`https://solscan.io/tx/${mintSig}?cluster=devnet`} target="_blank" rel="noreferrer">
-                      {mintSig}
+                    <a
+                      href={`https://solscan.io/tx/${mintSig}?cluster=devnet`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
+                      title={mintSig}
+                    >
+                      {shortTxMid(mintSig)}
                     </a>
+
                   </div>
                 )}
                 {/* === END: Buy Tokens UI === */}
-              </div>
+              </div>)}
 
               {/* 2) Redeem while active (if active) */}
               {bettingActive && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  {/* paste your Redeem Pair UI content here (remove its outer container styles) */}
-                  {/* keep your existing logic */}
-                  {/* ... */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
+                  {/* Redeem Pair UI (only while betting active) */}
+    
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                    Redeem (While Betting Active)
+                  </div>
+
+                  <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+                    Redeem requires equal amounts of TRUE + FALSE. Example: 1 TRUE + 1 FALSE = 0.99 SOL.
+                  </div>
+
+                  {!walletConnected ? (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+                      Connect wallet to redeem.
+                    </div>
+                  ): userToken.loading ? (
+                    <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+                      Checking your token balances...
+                    </div>
+                  ): !hasBothTokens ? (
+                    <div style={{ marginTop: 10, fontSize: 12, opacity: 0.8 }}>
+                      You need BOTH TRUE and FALSE to redeem as a pair.
+                    </div>
+                  ): (
+                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
+                        <input
+                          value={redeemAmount}
+                          onChange={(e) => setRedeemAmount(e.target.value)}
+                          placeholder="e.g. 0.1"
+                          className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                            focus:ring-2 focus:ring-indigo-500
+                            dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                          inputMode="decimal"
+                          disabled={!walletConnected}
+                        />
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => redeemPairWhileActive(redeemAmount)}
+                        disabled={loading || minting || redeeming || finalizing || postRedeeming || !hasBothTokens} 
+                        className={`
+                          mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                          ${minting
+                            ? "bg-gray-300 text-gray-600 cursor-not-allowed"
+                            : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                        `}
+
+                      >
+                        {redeeming ? "Redeeming..." : "Redeem TRUE+FALSE → SOL"}
+                      </button>
+
+                      <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>
+                        You burn {redeemAmount || "0"} TRUE and {redeemAmount || "0"} FALSE
+                      </div>
+                    </div>
+                  )
+                  }
+
+
+                  {redeemErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{redeemErr}</div>}
+
+                  {redeemSig && (
+                    <div style={{ marginTop: 10, fontSize: 13 }}>
+                      <b>TX:</b>{" "}
+                      <a 
+                        href={`https://solscan.io/tx/${redeemSig}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
+                      >
+                        {shortTxMid(redeemSig)}
+                      </a>
+                    </div>
+                  )}
+       
                 </div>
               )}
 
               {/* 3) Get Result / Finalize (if available) */}
               {canGetResult(ev, truthQ) && !ev.resolved && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  {/* paste your Get Result UI content here */}
-                  {/* ... */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
+                  <div style={{ fontWeight: 700, marginBottom: 8 }}>Get Result (Finalize Truth + Store Winner)</div>
+
+                  <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+                    This will call Truth Network <code>finalize_voting</code> and then store the winner in this event.
+                    {truthLoading ? (
+                      <span> (loading truth status...)</span>
+                    ) : truthQ ? (
+                      <span>
+                        {" "}
+                        Reveal ends: <b>{toDate(truthQ.revealEndTime)}</b>{" "}
+                      </span>
+                    ) : (
+                      <span> (no truth question loaded)</span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={getResult}
+                    disabled={!walletConnected || finalizing || loading || minting || redeeming || finalizing || postRedeeming || ev.resolved}
+                    className={`
+                      px-4 py-2 rounded-lg font-medium text-white transition
+                      ${finalizing
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"}
+                    `}
+                  >
+                    {finalizing ? "Finalizing..." : "Get Result"}
+                  </button>
+
+                  {!walletConnected && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+                      Connect wallet to finalize and store result.
+                    </div>
+                  )}
+
+                  {finalizeErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{finalizeErr}</div>}
+
+                  {finalizeSig && (
+                    <div style={{ marginTop: 10, fontSize: 13 }}>
+                      <b>TX:</b>{" "}
+                      <a href={`https://solscan.io/tx/${finalizeSig}?cluster=devnet`} target="_blank" rel="noreferrer">
+                        {finalizeSig}
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* 4) Post-finalize redeem */}
               {bettingClosed && ev.resolved && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  {/* paste your Post-finalization Redeem UI content here */}
-                  {/* ... */}
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur text-gray-600 dark:text-gray-300">
+                  {hasWinner(ev) ? (
+                    <>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                        Winner is <b>{winnerLabel(ev)}</b>
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+                        expected: 1 <b>{winnerLabel(ev)}</b> token = 1 SOL
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
+                          <input
+                            value={postRedeemAmount}
+                            onChange={(e) => setPostRedeemAmount(e.target.value)}
+                            placeholder="e.g. 0.1"
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                            inputMode="decimal"
+                            disabled={!walletConnected}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => redeemWinnerAfterFinal(postRedeemAmount)}
+                          disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
+                          className={`
+                            mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                            ${postRedeeming
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                          `}
+                        >
+                          {postRedeeming ? "Redeeming..." : `Redeem ${winnerLabel(ev)} → SOL`}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                        There is <b>no winner</b> for this event ({resultLabel(ev)}).
+                      </div>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
+                        You can redeem TRUE or FALSE.
+                        {" "}(expected: 1 token = 0.5 SOL)
+                      </div>
+
+                      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <label style={{ fontSize: 12, opacity: 0.8 }}>Side</label>
+                          <select
+                            value={postRedeemSide}
+                            onChange={(e) => setPostRedeemSide(e.target.value)}
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                            disabled={!walletConnected}
+                          >
+                            <option value="TRUE">TRUE</option>
+                            <option value="FALSE">FALSE</option>
+                          </select>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
+                          <input
+                            value={postRedeemAmount}
+                            onChange={(e) => setPostRedeemAmount(e.target.value)}
+                            placeholder="e.g. 0.1"
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                            inputMode="decimal"
+                            disabled={!walletConnected}
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => redeemNoWinnerAfterFinal(postRedeemAmount, postRedeemSide)}
+                          disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
+                          className={`
+                            mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                            ${postRedeeming
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                          `}
+                        >
+                          {postRedeeming ? "Redeeming..." : `Redeem ${postRedeemSide} → SOL`}
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {!walletConnected && (
+                    <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
+                      Connect wallet to redeem.
+                    </div>
+                  )}
+
+                  {postRedeemErr && <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>{postRedeemErr}</div>}
+
+                  {postRedeemSig && (
+                    <div style={{ marginTop: 10, fontSize: 13 }}>
+                      <b>TX:</b>{" "}
+                      <a 
+                        href={`https://solscan.io/tx/${postRedeemSig}?cluster=devnet`} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
+                      >
+                        {shortTxMid(postRedeemSig)}
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* 5) Claim commission (creator) */}
-              {walletConnected && isCreator(ev) && pendingCreatorCommissionBase > 0n && (
-                <div className="rounded-xl border border-gray-200 bg-white p-4">
-                  {/* paste your Claim Commission block here */}
-                  {/* ... */}
+              {walletConnected && isCreator(ev) && bettingClosed && ev.resolved && pendingCreatorCommissionBase > 0n && (
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
+                  <div style={{ fontWeight: 700 }}>Event finalized</div>
+                  <div style={{ marginTop: 6, fontSize: 13, opacity: 0.9 }}>
+                    Outcome: <b>{resultLabel(ev)}</b> — {winnerLabel(ev)}
+                    {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER && (
+                      <>
+                        {" "}
+                        (<b>{pctFromBps(ev.winningPercentBps)}</b>%)
+                      </>
+                    )}
+                  </div>
+
+                  {/* Claim Commission (creator only, after betting ends) */}
+                  {walletConnected && isCreator(ev) && (
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 8 }}>
+                        Pending creator commission:{" "}
+                        <b>{baseToUiStr(ev?.pendingCreatorCommission?.toString?.() ?? "0")}</b> SOL
+                      </div>
+
+                      <button
+                        onClick={claimCreatorCommission}
+                        disabled={claimingCreator || loading || minting || redeeming || finalizing || postRedeeming}
+                        className={`
+                          px-4 py-2 rounded-lg font-medium text-white transition
+                          ${claimingCreator
+                            ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                            : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                        `}
+                      >
+                        {claimingCreator ? "Claiming..." : "Claim Commission"}
+                      </button>
+
+                      {claimCreatorErr && (
+                        <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>
+                          {claimCreatorErr}
+                        </div>
+                      )}
+
+                      {claimCreatorSig && (
+                        <div style={{ marginTop: 10, fontSize: 13 }}>
+                          <b>TX:</b>{" "}
+                          <a
+                            href={`https://solscan.io/tx/${claimCreatorSig}?cluster=devnet`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {claimCreatorSig}
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* 6) Sweep / Delete controls */}
-              {ev?.resolved && !ev?.unclaimedSwept && (
+              {ev?.resolved && !ev?.unclaimedSwept && showSweepButton &&(
                 <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
-                  {/* keep your existing sweep block here */}
-                  {/* ... */}
+                  <p className="text-sm text-yellow-800">
+                    Unclaimed SOL will be swept to the House in{" "}
+                    <strong>
+                      {Math.max(0, sweepAfterTs - now)} seconds
+                    </strong>.
+                  </p>
+                
+                  <button
+                    onClick={handleSweepUnclaimed}
+                    className="
+                      px-4 py-2 rounded-lg font-medium text-white transition
+                      bg-red-600 hover:bg-red-700 active:bg-red-800
+                    "
+                  >
+                    Sweep Unclaimed SOL to House
+                  </button>
                 </div>
               )}
 
               {showDeleteEventButton && (
                 <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                  {/* keep your existing delete block here */}
-                  {/* ... */}
+                  <p className="text-sm text-red-800 mb-2">
+                    This event is fully settled and can be deleted.
+                  </p>
+
+                  <button
+                    onClick={handleDeleteEvent}
+                    className="
+                      px-4 py-2 rounded-lg font-medium text-white transition
+                      bg-red-600 hover:bg-red-700 active:bg-red-800
+                    "
+                  >
+                    Delete Event
+                  </button>
                 </div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Wallet token balances hint (you can keep this either left or right; Polymarket keeps it near actions) */}
-        {walletConnected && (
-          <div className="mt-6 rounded-xl border border-gray-200 bg-white p-4 text-sm">
-            {userToken.loading ? (
-              <span className="text-gray-600">Checking your token balances...</span>
-            ) : hasAnyToken ? (
-              <span className="text-green-700">
-                You already have tokens for this event: TRUE <b>{baseToUiStr(userToken.trueBalBase)}</b>, FALSE{" "}
-                <b>{baseToUiStr(userToken.falseBalBase)}</b>
-              </span>
-            ) : (
-              <span className="text-gray-600">You don’t hold TRUE/FALSE tokens for this event yet.</span>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );
