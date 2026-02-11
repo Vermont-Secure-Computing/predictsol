@@ -22,10 +22,13 @@ export function getConstants() {
     { value: 3, label: "Sports" },
   ];
 
+  const MIN_BUY_SOL = 0.000001;
+
   return {
     ...base,
     VERSION_NAME: versionName,
     AVAILABLE_VERSIONS: versionMap,
-    CATEGORY_OPTIONS
+    CATEGORY_OPTIONS,
+    MIN_BUY_SOL
   };
 }
