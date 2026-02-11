@@ -166,7 +166,7 @@ fn short_prefix(title: &str) -> String {
     title
         .chars()
         .filter(|c| !c.is_whitespace())
-        .take(5)
+        .take(7)
         .collect()
 }
 

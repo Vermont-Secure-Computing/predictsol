@@ -136,7 +136,7 @@ function baseToUiStr(baseStr, decimals = 9) {
   const x = BigInt(baseStr || "0");
   const whole = x / BigInt(10 ** decimals);
   const frac = x % BigInt(10 ** decimals);
-  const fracStr = frac.toString().padStart(decimals, "0").slice(0, 4); // 4 dp
+  const fracStr = frac.toString().padStart(decimals, "0").slice(0, 9);
   return `${whole.toString()}.${fracStr}`;
 }
 
@@ -524,10 +524,10 @@ export default function EventDetail() {
     !!ev?.resolved &&
     creatorCommissionZero &&
     houseCommissionZero &&
-    canDeleteByPhase &&
-    isTruthDeletable()
+    canDeleteByPhase
+    //isTruthDeletable()
   console.log("truth q: ", truthQ)
-  console.log("is truth deletable: ", isTruthDeletable())
+  //console.log("is truth deletable: ", isTruthDeletable())
   console.log("show delete event button: ", showDeleteEventButton)
 
   console.log("walletConnedted: ", walletConnected)
@@ -586,6 +586,17 @@ export default function EventDetail() {
     return null;
   }
 
+
+  function getMaxRedeemUiAmount() {
+    if (userToken.loading) return "0";
+
+    const t = userToken.trueBalBase ?? 0n;
+    const f = userToken.falseBalBase ?? 0n;
+    const minBase = t < f ? t : f;
+    return baseToUiStr(minBase);
+  }
+
+
   async function buyTokens(solAmountStr) {
     if (!walletConnected) return setMintErr("Connect wallet to buy.");
     if (!program) return;
@@ -599,6 +610,12 @@ export default function EventDetail() {
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
       buyLockRef.current = false;
       setMintErr("Enter a valid SOL amount > 0");
+      return;
+    }
+
+    if (amountNum < constants.MIN_BUY_SOL) {
+      buyLockRef.current = false;
+      setMintErr(`Minimum buy amount is ${constants.MIN_BUY_SOL} SOL`);
       return;
     }
 
@@ -1497,16 +1514,40 @@ export default function EventDetail() {
                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
-                        <input
-                          value={redeemAmount}
-                          onChange={(e) => setRedeemAmount(e.target.value)}
-                          placeholder="e.g. 0.1"
-                          className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
-                            focus:ring-2 focus:ring-indigo-500
-                            dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
-                          inputMode="decimal"
-                          disabled={!walletConnected}
-                        />
+
+                        <div className="flex items-center gap-2">
+                          <input
+                            value={redeemAmount}
+                            onChange={(e) => setRedeemAmount(e.target.value)}
+                            placeholder="e.g. 0.1"
+                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                              focus:ring-2 focus:ring-indigo-500
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                            inputMode="decimal"
+                            disabled={!walletConnected}
+                          />
+
+                          <button
+                            type="button"
+                            onClick={() => setRedeemAmount(getMaxRedeemUiAmount())}
+                            disabled={!walletConnected || userToken.loading || !hasBothTokens}
+                            className="
+                              px-3 py-2 rounded-lg text-xs font-semibold border
+                              border-gray-200 bg-gray-50 text-gray-800
+                              hover:bg-gray-100 active:bg-gray-200
+                              disabled:opacity-50 disabled:cursor-not-allowed
+                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100
+                              dark:hover:bg-gray-900 dark:active:bg-gray-800
+                            "
+                            title="Set maximum redeemable (min(TRUE, FALSE))"
+                          >
+                            MAX
+                          </button>
+                        </div>
+
+                        <div className="text-xs text-gray-500 dark:text-gray-400">
+                          Max: {getMaxRedeemUiAmount()}
+                        </div>
                       </div>
 
                       <button
@@ -1674,16 +1715,40 @@ export default function EventDetail() {
 
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
-                          <input
-                            value={postRedeemAmount}
-                            onChange={(e) => setPostRedeemAmount(e.target.value)}
-                            placeholder="e.g. 0.1"
-                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
-                              focus:ring-2 focus:ring-indigo-500
-                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
-                            inputMode="decimal"
-                            disabled={!walletConnected}
-                          />
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={postRedeemAmount}
+                              onChange={(e) => setPostRedeemAmount(e.target.value)}
+                              placeholder="e.g. 0.1"
+                              className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                                focus:ring-2 focus:ring-indigo-500
+                                dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                              inputMode="decimal"
+                              disabled={!walletConnected}
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => setPostRedeemAmount(getMaxRedeemUiAmount())}
+                              disabled={!walletConnected || userToken.loading || !hasBothTokens}
+                              className="
+                                px-3 py-2 rounded-lg text-xs font-semibold border
+                                border-gray-200 bg-gray-50 text-gray-800
+                                hover:bg-gray-100 active:bg-gray-200
+                                disabled:opacity-50 disabled:cursor-not-allowed
+                                dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100
+                                dark:hover:bg-gray-900 dark:active:bg-gray-800
+                              "
+                              title="Set maximum redeemable (min(TRUE, FALSE))"
+                            >
+                              MAX
+                            </button>
+                          </div>
+
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Max: {getMaxRedeemUiAmount()}
+                          </div>
                         </div>
 
                         <button
