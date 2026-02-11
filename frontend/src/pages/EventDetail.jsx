@@ -140,6 +140,11 @@ function baseToUiStr(baseStr, decimals = 9) {
   return `${whole.toString()}.${fracStr}`;
 }
 
+function toDateTime(tsSec) {
+  if (!tsSec) return "-";
+  return new Date(Number(tsSec) * 1000).toLocaleString();
+}
+
 const shortTxMid = (sig, left = 12, right = 12) =>
   sig && sig.length > left + right
     ? `${sig.slice(0, left)}…${sig.slice(-right)}`
@@ -202,6 +207,11 @@ export default function EventDetail() {
   const [vaultLamports, setVaultLamports] = useState(0);
 
   const [vaultMin, setVaultMin] = useState(null);
+
+  // state for sweep unclaimed SOL confirmation modal
+  const [showSweepConfirm, setShowSweepConfirm] = useState(false);
+  const [sweeping, setSweeping] = useState(false);
+
 
   // prevents double submit even before setState updates
   const buyLockRef = useRef(false);
@@ -587,6 +597,7 @@ export default function EventDetail() {
   }
 
 
+  // use for redeeming pair (redeem while active)
   function getMaxRedeemUiAmount() {
     if (userToken.loading) return "0";
 
@@ -596,6 +607,27 @@ export default function EventDetail() {
     return baseToUiStr(minBase);
   }
 
+  function getWinnerTokenBase(ev, userToken) {
+    // winning_option: 1 TRUE, 2 FALSE
+    const win = Number(ev?.winningOption ?? ev?.winning_option ?? 0);
+
+    if (win === 1) return userToken?.trueBalBase ?? 0n;
+    if (win === 2) return userToken?.falseBalBase ?? 0n;
+
+    // no winner
+    return 0n;
+  }
+
+  function getMaxPostRedeemWinnerUi(ev) {
+    if (userToken.loading) return "0";
+    return baseToUiStr(getWinnerTokenBase(ev, userToken));
+  }
+
+  function getMaxPostRedeemNoWinnerUi(side) {
+    if (userToken.loading) return "0";
+    const base = side === "TRUE" ? (userToken.trueBalBase ?? 0n) : (userToken.falseBalBase ?? 0n);
+    return baseToUiStr(base);
+  }
 
   async function buyTokens(solAmountStr) {
     if (!walletConnected) return setMintErr("Connect wallet to buy.");
@@ -1144,9 +1176,9 @@ export default function EventDetail() {
     }
   }
 
-
   async function handleSweepUnclaimed() {
     try {
+      if (!program) throw new Error("Program not ready");
       const eventPk = new PublicKey(eventPda);
       const [collateralVault] = await findCollateralVaultPda(eventPk);
 
@@ -1165,6 +1197,7 @@ export default function EventDetail() {
       console.error("[sweep] failed:", e);
     }
   }
+
 
   async function handleDeleteEvent() {
     try {
@@ -1284,6 +1317,34 @@ export default function EventDetail() {
               </div>
             </div>*/}
 
+            <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm
+              dark:border-green-900/40 dark:bg-green-900/20 dark:backdrop-blur">
+              <div className="text-sm text-gray-600 dark:text-gray-300">Market</div>
+              <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{resultLabel(ev)}</div>
+
+              {ev?.resolved && (
+                <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600 dark:text-gray-600">
+                  Outcome: <span className="font-semibold">{winnerLabel(ev)}</span>
+                  {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER ? (
+                    <span className="text-gray-600 dark:text-gray-900"> · {pctFromBps(ev.winningPercentBps)}%</span>
+                  ) : null}
+
+                  <div>
+                    <span className="text-xs text-gray-600 dark:text-gray-600">Votes: </span>
+                    <span className="text-xs text-gray-900 dark:text-gray-900">
+                      TRUE {bnToStr(ev.votesOption1 ?? ev.votes_option_1)} — FALSE {bnToStr(ev.votesOption2 ?? ev.votes_option_2)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-600 dark:text-gray-600">Winning Percentage: </span>
+                    <span className="text-xs text-gray-900 dark:text-gray-900">
+                      {pctFromBps(ev.winningPercentBps)}%
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Event info / Details (this is your big info block, styled nicer) */}
             <div className="rounded-2xl border border-gray-200 bg-white p-4 sm:p-5 shadow-sm
                 dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
@@ -1369,7 +1430,7 @@ export default function EventDetail() {
           <div className="lg:col-span-1">
             <div className="space-y-4 lg:sticky lg:top-6">
 
-              {/* Winner / status banner */}
+              {/* Winner / status banner 
               <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm
                 dark:border-green-900/40 dark:bg-green-900/20 dark:backdrop-blur">
                 <div className="text-sm text-gray-600 dark:text-gray-300">Market</div>
@@ -1396,11 +1457,11 @@ export default function EventDetail() {
                     </div>
                   </div>
                 )}
-              </div>
+              </div>*/}
 
               {/* Wallet token balances hint*/}
               {walletConnected && (
-                <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
+                <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm
                 dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur text-sm">
                   {userToken.loading ? (
                     <span className="text-gray-600 dark:text-gray-300">Checking your token balances...</span>
@@ -1443,10 +1504,10 @@ export default function EventDetail() {
                     onClick={() => buyTokens(solAmount)}
                     disabled={!walletConnected || !bettingActive || minting || loading || redeeming || finalizing || postRedeeming}
                     className={`
-                      mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                      mt-4 px-4 py-2 rounded-lg font-medium transition
                       ${minting
                         ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                        : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                        : "text-white bg-green-600 hover:bg-green-700 active:bg-green-800"}
                     `}
 
                   >
@@ -1555,10 +1616,10 @@ export default function EventDetail() {
                         onClick={() => redeemPairWhileActive(redeemAmount)}
                         disabled={loading || minting || redeeming || finalizing || postRedeeming || !hasBothTokens} 
                         className={`
-                          mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                          mt-4 px-4 py-2 rounded-lg font-medium transition
                           ${minting
                             ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                            : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                            : "text-white bg-green-600 hover:bg-green-700 active:bg-green-800"}
                         `}
 
                       >
@@ -1616,10 +1677,10 @@ export default function EventDetail() {
                     onClick={getResult}
                     disabled={!walletConnected || finalizing || loading || minting || redeeming || finalizing || postRedeeming || ev.resolved}
                     className={`
-                      px-4 py-2 rounded-lg font-medium text-white transition
+                      px-4 py-2 rounded-lg font-medium transition
                       ${finalizing
                         ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                        : "bg-amber-500 hover:bg-amber-600 active:bg-amber-700"}
+                        : "text-white bg-amber-500 hover:bg-amber-600 active:bg-amber-700"}
                     `}
                   >
                     {finalizing ? "Finalizing..." : "Get Result"}
@@ -1660,16 +1721,40 @@ export default function EventDetail() {
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           <label style={{ fontSize: 12, opacity: 0.8 }}>Amount (tokens)</label>
-                          <input
-                            value={postRedeemAmount}
-                            onChange={(e) => setPostRedeemAmount(e.target.value)}
-                            placeholder="e.g. 0.1"
-                            className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
-                              focus:ring-2 focus:ring-indigo-500
-                              dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
-                            inputMode="decimal"
-                            disabled={!walletConnected}
-                          />
+
+                          <div className="flex items-center gap-2">
+                            <input
+                              value={postRedeemAmount}
+                              onChange={(e) => setPostRedeemAmount(e.target.value)}
+                              placeholder="e.g. 0.1"
+                              className="w-40 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm outline-none
+                                focus:ring-2 focus:ring-indigo-500
+                                dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+                              inputMode="decimal"
+                              disabled={!walletConnected}
+                            />
+
+                            <button
+                              type="button"
+                              onClick={() => setPostRedeemAmount(getMaxPostRedeemWinnerUi(ev))}
+                              disabled={!walletConnected || userToken.loading}
+                              className="
+                                px-3 py-2 rounded-lg text-xs font-semibold border
+                                border-gray-200 bg-gray-50 text-gray-800
+                                hover:bg-gray-100 active:bg-gray-200
+                                disabled:opacity-50 disabled:cursor-not-allowed
+                                dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-100
+                                dark:hover:bg-gray-900 dark:active:bg-gray-800
+                              "
+                              title="Set maximum redeemable (min(TRUE, FALSE))"
+                            >
+                              MAX
+                            </button>
+                          </div>
+
+                          <div className="text-xs text-gray-500 dark:text-gray-400">
+                            Max: {getMaxPostRedeemNoWinnerUi(postRedeemSide)}
+                          </div>
                         </div>
 
                         <button
@@ -1677,10 +1762,10 @@ export default function EventDetail() {
                           onClick={() => redeemWinnerAfterFinal(postRedeemAmount)}
                           disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
                           className={`
-                            mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                            mt-4 px-4 py-2 rounded-lg font-medium transition
                             ${postRedeeming
                               ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                              : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                              : "text-white bg-green-600 hover:bg-green-700 active:bg-green-800"}
                           `}
                         >
                           {postRedeeming ? "Redeeming..." : `Redeem ${winnerLabel(ev)} → SOL`}
@@ -1730,8 +1815,8 @@ export default function EventDetail() {
 
                             <button
                               type="button"
-                              onClick={() => setPostRedeemAmount(getMaxRedeemUiAmount())}
-                              disabled={!walletConnected || userToken.loading || !hasBothTokens}
+                              onClick={() => setPostRedeemAmount(getMaxPostRedeemNoWinnerUi(postRedeemSide))}
+                              disabled={!walletConnected || userToken.loading}
                               className="
                                 px-3 py-2 rounded-lg text-xs font-semibold border
                                 border-gray-200 bg-gray-50 text-gray-800
@@ -1747,7 +1832,7 @@ export default function EventDetail() {
                           </div>
 
                           <div className="text-xs text-gray-500 dark:text-gray-400">
-                            Max: {getMaxRedeemUiAmount()}
+                            Max: {getMaxPostRedeemNoWinnerUi(postRedeemSide)}
                           </div>
                         </div>
 
@@ -1756,10 +1841,10 @@ export default function EventDetail() {
                           onClick={() => redeemNoWinnerAfterFinal(postRedeemAmount, postRedeemSide)}
                           disabled={!walletConnected || postRedeeming || loading || minting || redeeming || finalizing || !hasAnyToken}
                           className={`
-                            mt-4 px-4 py-2 rounded-lg font-medium text-white transition
+                            mt-4 px-4 py-2 rounded-lg font-medium transition
                             ${postRedeeming
                               ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                              : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                              : "text-white bg-green-600 hover:bg-green-700 active:bg-green-800"}
                           `}
                         >
                           {postRedeeming ? "Redeeming..." : `Redeem ${postRedeemSide} → SOL`}
@@ -1819,10 +1904,10 @@ export default function EventDetail() {
                         onClick={claimCreatorCommission}
                         disabled={claimingCreator || loading || minting || redeeming || finalizing || postRedeeming}
                         className={`
-                          px-4 py-2 rounded-lg font-medium text-white transition
+                          px-4 py-2 rounded-lg font-medium transition
                           ${claimingCreator
                             ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                            : "bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                            : "text-wihte bg-green-600 hover:bg-green-700 active:bg-green-800"}
                         `}
                       >
                         {claimingCreator ? "Claiming..." : "Claim Commission"}
@@ -1852,24 +1937,27 @@ export default function EventDetail() {
               )}
 
               {/* 6) Sweep / Delete controls */}
-              {ev?.resolved && !ev?.unclaimedSwept && showSweepButton &&(
+              {ev?.resolved && !ev?.unclaimedSwept &&(
                 <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
                   <p className="text-sm text-yellow-800">
-                    Unclaimed SOL will be swept to the House in{" "}
+                    Unclaimed SOL can be swept to the House starting at{" "}
                     <strong>
-                      {Math.max(0, sweepAfterTs - now)} seconds
+                      {toDateTime(sweepAfterTs)}
                     </strong>.
                   </p>
-                
-                  <button
-                    onClick={handleSweepUnclaimed}
-                    className="
-                      px-4 py-2 rounded-lg font-medium text-white transition
-                      bg-red-600 hover:bg-red-700 active:bg-red-800
-                    "
-                  >
-                    Sweep Unclaimed SOL to House
-                  </button>
+
+                  {showSweepButton &&
+                    <button
+                      onClick={() => setShowSweepConfirm(true)}
+                      className="
+                        px-4 py-2 rounded-lg font-medium text-white transition
+                        bg-red-600 hover:bg-red-700 active:bg-red-800
+                      "
+                    >
+                      Sweep Unclaimed SOL to House
+                    </button>
+                  } 
+
                 </div>
               )}
 
@@ -1893,6 +1981,68 @@ export default function EventDetail() {
             </div>
           </div>
         </div>
+        
+        {showSweepConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            {/* backdrop */}
+            <div
+              className="absolute inset-0 bg-black/50"
+              onClick={() => (sweeping ? null : setShowSweepConfirm(false))}
+            />
+
+            {/* modal */}
+            <div className="relative w-[92%] max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-xl
+                            dark:border-gray-800 dark:bg-gray-900">
+              <div className="text-lg font-semibold text-gray-900 dark:text-white">
+                Confirm sweep
+              </div>
+
+              <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                This will transfer any <b>unclaimed SOL</b> from the event’s collateral vault to the <b>House</b>.
+                This action is <b>irreversible</b>.
+              </p>
+
+              <div className="mt-3 rounded-lg border border-yellow-200 bg-yellow-50 p-3 text-xs text-yellow-900
+                dark:border-yellow-900/40 dark:bg-yellow-900/20 dark:text-yellow-200">
+                After unclaimed funds are swept, users can no longer redeem tokens for this event.
+                Any remaining TRUE/FALSE tokens will no longer be claimable for SOL after this action.
+              </div>
+
+
+              <div className="mt-5 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={sweeping}
+                  onClick={() => setShowSweepConfirm(false)}
+                  className="px-4 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50
+                            disabled:opacity-60
+                            dark:border-gray-800 dark:text-gray-200 dark:hover:bg-gray-800"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={sweeping}
+                  onClick={async () => {
+                    setSweeping(true);
+                    try {
+                      await handleSweepUnclaimed();
+                      setShowSweepConfirm(false);
+                    } finally {
+                      setSweeping(false);
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg font-medium text-white transition
+                            bg-red-600 hover:bg-red-700 active:bg-red-800
+                            disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {sweeping ? "Sweeping..." : "Yes, sweep now"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
