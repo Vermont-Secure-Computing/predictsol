@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { getPredictProgram } from "../lib/anchorClient";
 import { getPredictReadonlyProgram } from "../lib/anchorReadOnly";
 import { getConstants } from "../constants";
+import { formatCompactNumber } from "../utils/compactNumber"
 
 export default function EventsList() {
   const wallet = useWallet();
@@ -162,8 +163,11 @@ export default function EventsList() {
                   Vault: {ev.collateralVault.toBase58()}
                 </div>
 
-                <div className="text-xs font-bold text-indigo-600 dark:text-indigo-300 mt-2">
-                  {((vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9).toFixed(4)} SOL
+                <div
+                  title={`${((vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9).toFixed(6)} SOL`}
+                  className="text-xs font-bold text-indigo-600 dark:text-indigo-300 mt-2"
+                >
+                  {formatCompactNumber((vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9)} SOL
                 </div>
 
               </div>
