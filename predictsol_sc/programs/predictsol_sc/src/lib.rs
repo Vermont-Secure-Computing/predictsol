@@ -21,10 +21,10 @@ use truth_network::{
 // Import the Truth-Network program
 use truth_network::accounts::Question;
 
-pub const HOUSE_WALLET: Pubkey = pubkey!("4yuDDnFAavYGyBBcWb2HkAcD5bgoZRvRJZHUgrXTWHGX");
+pub const HOUSE_WALLET: Pubkey = pubkey!("CQaZgx5jqQrz7c8shCG3vJLiiPGPrawSGhvkgXtGyxL");
 
 
-declare_id!("E9o834tLQRWpscJNMSq3C4wUyoXPwymAS3ZDfjuK9tpu");
+declare_id!("Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf");
 
 // ======================================================
 // PDA SEEDS
@@ -46,8 +46,9 @@ pub const RESULT_FINALIZED_TIE: u8 = 3;
 pub const RESULT_FINALIZED_BELOW_THRESHOLD: u8 = 4;
 
 pub const REDEEM_FEE_BPS: u64 = 0; // no more fee on redeem
+pub const VAULT_DUST_TOLERANCE_LAMPORTS: u64 = 10;
 
-pub const UNCLAIMED_SWEEP_DELAY_SECS: i64 = 10 * 60; //15 * 24 * 60 * 60; // 15 days 
+pub const UNCLAIMED_SWEEP_DELAY_SECS: i64 = 30 * 24 * 60 * 60; // 30 days for test 5 * 60;
 
 // uri token metadata
 pub const TRUE_TOKEN_URI: &str = "https://black-generous-emu-9.mypinata.cloud/ipfs/bafkreihwrwcaodgkzekrb5zjbeh43mnrnryjvtpqaclccxzxv3jnrl2nnq";
@@ -1263,7 +1264,7 @@ pub mod predictol_sc {
 
         let after_window = now >= resolved_at.saturating_add(UNCLAIMED_SWEEP_DELAY_SECS);
         let no_outstanding = no_outstanding_tokens(ev);
-        let vault_empty = vault_lamports <= keep;
+        let vault_empty = vault_lamports <= keep.saturating_add(VAULT_DUST_TOLERANCE_LAMPORTS);
 
         if !after_window {
             // BEFORE window: strict, only deletable if no one ever bought / all burned if no winner / winning side - all burned

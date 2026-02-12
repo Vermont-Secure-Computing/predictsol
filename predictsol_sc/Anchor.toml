@@ -3,14 +3,14 @@ resolution = true
 skip-lint = false
 
 [programs.localnet]
-predictsol_sc = "E9o834tLQRWpscJNMSq3C4wUyoXPwymAS3ZDfjuK9tpu"
+predictsol_sc = "Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
-wallet = "~/.config/solana/predictsol_devnet.json"
+cluster = "mainnet"
+wallet = "~/.config/solana/predictsol_mainnet.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
