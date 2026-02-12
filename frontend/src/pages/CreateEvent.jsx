@@ -360,139 +360,141 @@ export default function CreateEvent() {
   }
 
   return (
-    <div className="w-full max-w-2xl mx-auto">
-      <div className="mb-6">
-        <h2 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
-          Create Event
-        </h2>
-        <p className="mt-2 text-gray-600 dark:text-gray-400">
-          Create a new prediction market event on PredictSol.
-        </p>
-      </div>
-  
-      {!wallet.publicKey && (
-        <div className="p-4 rounded-xl border border-yellow-300 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200 mb-6">
-          Connect your wallet to create an event.
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90">
+      <div className="mx-auto w-full max-w-4xl px-4 py-6">
+        <div className="mb-6">
+          <h2 className="text-4xl font-extrabold tracking-tight text-gray-900 dark:text-white">
+            Create Event
+          </h2>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
+            Create a new prediction market event on PredictSol.
+          </p>
         </div>
-      )}
-  
-      <form
-        onSubmit={onSubmit}
-        className="p-6 rounded-2xl border border-gray-200 bg-white shadow-sm
-                   dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur
-                   grid gap-5"
-      >
-        {/* Title */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-            Title (10-150 characters)
-          </label>
-  
-          <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            disabled={busy}
-            placeholder="Example: Will Bitcoin reach $150K before 2026?"
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
-                       dark:border-gray-800 dark:bg-gray-950 dark:text-white
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          />
-        </div>
-  
-        {/* Category */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-            Category
-          </label>
-  
-          <select
-            value={category}
-            onChange={(e) => setCategory(Number(e.target.value))}
-            disabled={busy}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
-                       dark:border-gray-800 dark:bg-gray-950 dark:text-white
-                       focus:outline-none focus:ring-2 focus:ring-indigo-500"
-          >
-            {CATEGORY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-        </div>
-  
-        {/* Dates */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              Betting End Time
-            </label>
-            <input
-              type="datetime-local"
-              value={betEnd}
-              onChange={(e) => setBetEnd(e.target.value)}
-              disabled={busy}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
-                         dark:border-gray-800 dark:bg-gray-950 dark:text-white
-                         focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-  
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              Commit End Time
-            </label>
-            <input
-              type="datetime-local"
-              value={commitEnd}
-              onChange={(e) => setCommitEnd(e.target.value)}
-              disabled={busy}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
-                         dark:border-gray-800 dark:bg-gray-950 dark:text-white
-                         focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-  
-          <div className="md:col-span-2">
-            <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              Reveal End Time
-            </label>
-            <input
-              type="datetime-local"
-              value={revealEnd}
-              onChange={(e) => setRevealEnd(e.target.value)}
-              disabled={busy}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
-                         dark:border-gray-800 dark:bg-gray-950 dark:text-white
-                         focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-          </div>
-        </div>
-  
-        {/* Submit */}
-        <button
-          type="submit"
-          disabled={!wallet.publicKey || busy}
-          className="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold text-lg
-                     hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
-                     transition"
-        >
-          {busy ? "Creating..." : "Create Event"}
-        </button>
-  
-        {/* Message */}
-        {msg && (
-          <div
-            className={`p-4 rounded-xl border text-sm whitespace-pre-wrap ${
-              msg.startsWith("Event created")
-                ? "border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-200"
-                : "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
-            }`}
-          >
-            {msg}
+    
+        {!wallet.publicKey && (
+          <div className="p-4 rounded-xl border border-yellow-300 bg-yellow-50 text-yellow-800 dark:border-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200 mb-6">
+            Connect your wallet to create an event.
           </div>
         )}
-      </form>
+    
+        <form
+          onSubmit={onSubmit}
+          className="p-6 rounded-2xl border border-gray-200 bg-white shadow-sm
+                    dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur
+                    grid gap-5"
+        >
+          {/* Title */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
+              Title (10-150 characters)
+            </label>
+    
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              disabled={busy}
+              placeholder="Example: Will Bitcoin reach $150K before 2026?"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                        dark:border-gray-800 dark:bg-gray-950 dark:text-white
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+    
+          {/* Category */}
+          <div>
+            <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
+              Category
+            </label>
+    
+            <select
+              value={category}
+              onChange={(e) => setCategory(Number(e.target.value))}
+              disabled={busy}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                        dark:border-gray-800 dark:bg-gray-950 dark:text-white
+                        focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            >
+              {CATEGORY_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+    
+          {/* Dates */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                Betting End Time
+              </label>
+              <input
+                type="datetime-local"
+                value={betEnd}
+                onChange={(e) => setBetEnd(e.target.value)}
+                disabled={busy}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                          dark:border-gray-800 dark:bg-gray-950 dark:text-white
+                          focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+    
+            <div>
+              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                Commit End Time
+              </label>
+              <input
+                type="datetime-local"
+                value={commitEnd}
+                onChange={(e) => setCommitEnd(e.target.value)}
+                disabled={busy}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                          dark:border-gray-800 dark:bg-gray-950 dark:text-white
+                          focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+    
+            <div className="md:col-span-2">
+              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
+                Reveal End Time
+              </label>
+              <input
+                type="datetime-local"
+                value={revealEnd}
+                onChange={(e) => setRevealEnd(e.target.value)}
+                disabled={busy}
+                className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                          dark:border-gray-800 dark:bg-gray-950 dark:text-white
+                          focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+          </div>
+    
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={!wallet.publicKey || busy}
+            className="w-full py-3 rounded-xl bg-indigo-600 text-white font-bold text-lg
+                      hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed
+                      transition"
+          >
+            {busy ? "Creating..." : "Create Event"}
+          </button>
+    
+          {/* Message */}
+          {msg && (
+            <div
+              className={`p-4 rounded-xl border text-sm whitespace-pre-wrap ${
+                msg.startsWith("Event created")
+                  ? "border-green-300 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/30 dark:text-green-200"
+                  : "border-red-300 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200"
+              }`}
+            >
+              {msg}
+            </div>
+          )}
+        </form>
+      </div>
     </div>
   );  
 }

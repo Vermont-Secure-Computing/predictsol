@@ -44,7 +44,7 @@ export default function App() {
 
         <hr style={{ margin: "16px 0" }} />
 
-        <div style={{ display: "flex", gap: 16 }}>
+        <div style={{ display: "flex", gap: 16, marginBottom: "2em" }}>
           <Link to="/" style={{ textDecoration: "none", fontWeight: "bold" }}>
             Event List
           </Link>
