@@ -2,7 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 
 export const NETWORK = "mainnet";
 
-export const PREDICTSOL_PROGRAM_ID = null;
+export const PREDICTSOL_PROGRAM_ID = new PublicKey("Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf");
 export const TRUTH_NETWORK_PROGRAM_ID = new PublicKey("FFL71XjBkjq5gce7EtpB7Wa5p8qnRNueLKSzM4tkEMoc");
 
 export const FALLBACK_RPC_URLS = [
