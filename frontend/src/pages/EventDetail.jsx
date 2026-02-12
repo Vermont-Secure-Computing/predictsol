@@ -243,7 +243,8 @@ export default function EventDetail() {
     return () => { cancelled = true; };
   }, [program?.provider?.connection]);
 
-  const VAULT_MIN = vaultMin ?? 0; // fallback
+  const VAULT_MIN = vaultMin ?? 0;
+  const DUST_TOL = 10;
   
  
   async function loadUserTokenState(evData) {
@@ -465,7 +466,8 @@ export default function EventDetail() {
   const afterWindow = resolvedAt > 0 && now >= resolvedAt + UNCLAIMED_SWEEP_DELAY_SECS;
 
   const totalIssuedZero = BigInt(ev?.totalIssuedPerSide?.toString?.() || "0") === 0n;
-  const vaultEmpty = vaultLamports <= VAULT_MIN;
+
+  const vaultEmpty = vaultLamports <= VAULT_MIN + DUST_TOL;
 
   const outstandingTrue = BigInt(ev?.outstanding_true?.toString?.() ?? "0");
   const outstandingFalse = BigInt(ev?.outstanding_false?.toString?.() ?? "0");
@@ -476,6 +478,7 @@ export default function EventDetail() {
     : (vaultEmpty && (ev?.unclaimedSwept || outstandingZero))
 
 
+  console.log("vaultLamports: ", vaultLamports)
   console.log("vaultMin: ", vaultMin)
   console.log("VAULT_MIN: ", VAULT_MIN)
   console.log("after window: ", !afterWindow)
@@ -1320,10 +1323,18 @@ export default function EventDetail() {
             <div className="rounded-2xl border border-green-200 bg-green-50 p-4 shadow-sm
               dark:border-green-900/40 dark:bg-green-900/20 dark:backdrop-blur">
               <div className="text-sm text-gray-600 dark:text-gray-300">Market</div>
-              <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{resultLabel(ev)}</div>
+              {(() => {
+                const st = getEventStatus(ev, now);
+                return (
+                  <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{st.label}</div>
+                );
+              })()}
+              
 
               {ev?.resolved && (
                 <div className="mt-3 rounded-lg bg-gray-50 border border-gray-200 p-3 text-sm text-gray-600 dark:text-gray-600">
+                  <div className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{resultLabel(ev)}</div>
+
                   Outcome: <span className="font-semibold">{winnerLabel(ev)}</span>
                   {Number(ev?.resultStatus ?? 0) === RESULT.RESOLVED_WINNER ? (
                     <span className="text-gray-600 dark:text-gray-900"> · {pctFromBps(ev.winningPercentBps)}%</span>
@@ -1904,10 +1915,10 @@ export default function EventDetail() {
                         onClick={claimCreatorCommission}
                         disabled={claimingCreator || loading || minting || redeeming || finalizing || postRedeeming}
                         className={`
-                          px-4 py-2 rounded-lg font-medium transition
+                          mt-4 px-4 py-2 rounded-lg font-medium transition
                           ${claimingCreator
                             ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                            : "text-wihte bg-green-600 hover:bg-green-700 active:bg-green-800"}
+                            : "text-white bg-green-600 hover:bg-green-700 active:bg-green-800"}
                         `}
                       >
                         {claimingCreator ? "Claiming..." : "Claim Commission"}
@@ -1937,7 +1948,7 @@ export default function EventDetail() {
               )}
 
               {/* 6) Sweep / Delete controls */}
-              {ev?.resolved && !ev?.unclaimedSwept &&(
+              {ev?.resolved && !ev?.unclaimedSwept && !showDeleteEventButton &&(
                 <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4">
                   <p className="text-sm text-yellow-800">
                     Unclaimed SOL can be swept to the House starting at{" "}
