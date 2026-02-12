@@ -1,11 +1,198 @@
 {
-  "address": "BkNTEaYRntnPsgMZPKoh8AoQ5b7H75sweWivcUNxcm1V",
+  "address": "Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf",
   "metadata": {
     "name": "predictol_sc",
     "version": "0.1.0",
     "spec": "0.1.0"
   },
   "instructions": [
+    {
+      "name": "buy_positions_with_fee",
+      "discriminator": [
+        203,
+        85,
+        4,
+        185,
+        245,
+        29,
+        18,
+        177
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint_authority",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  105,
+                  110,
+                  116,
+                  95,
+                  97,
+                  117,
+                  116,
+                  104,
+                  111,
+                  114,
+                  105,
+                  116,
+                  121
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "true_mint",
+          "writable": true
+        },
+        {
+          "name": "false_mint",
+          "writable": true
+        },
+        {
+          "name": "user_true_ata",
+          "writable": true
+        },
+        {
+          "name": "user_false_ata",
+          "writable": true
+        },
+        {
+          "name": "truth_network_question",
+          "writable": true
+        },
+        {
+          "name": "truth_network_vault",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "lamports",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "claim_creator_commission",
+      "discriminator": [
+        183,
+        154,
+        139,
+        216,
+        192,
+        255,
+        106,
+        136
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
     {
       "name": "create_event_core",
       "discriminator": [
@@ -66,6 +253,10 @@
           "type": "string"
         },
         {
+          "name": "category",
+          "type": "u8"
+        },
+        {
           "name": "bet_end_time",
           "type": "i64"
         },
@@ -109,9 +300,6 @@
         },
         {
           "name": "mint_authority",
-          "docs": [
-            "No data is read from this account; we only use it as a program-derived signer."
-          ],
           "pda": {
             "seeds": [
               {
@@ -227,6 +415,208 @@
           }
         },
         {
+          "name": "metadata_program",
+          "address": "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s"
+        },
+        {
+          "name": "true_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  11,
+                  112,
+                  101,
+                  177,
+                  227,
+                  209,
+                  124,
+                  69,
+                  56,
+                  157,
+                  82,
+                  127,
+                  107,
+                  4,
+                  195,
+                  205,
+                  88,
+                  184,
+                  108,
+                  115,
+                  26,
+                  160,
+                  253,
+                  181,
+                  73,
+                  182,
+                  209,
+                  188,
+                  3,
+                  248,
+                  41,
+                  70
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "true_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                11,
+                112,
+                101,
+                177,
+                227,
+                209,
+                124,
+                69,
+                56,
+                157,
+                82,
+                127,
+                107,
+                4,
+                195,
+                205,
+                88,
+                184,
+                108,
+                115,
+                26,
+                160,
+                253,
+                181,
+                73,
+                182,
+                209,
+                188,
+                3,
+                248,
+                41,
+                70
+              ]
+            }
+          }
+        },
+        {
+          "name": "false_metadata",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  109,
+                  101,
+                  116,
+                  97,
+                  100,
+                  97,
+                  116,
+                  97
+                ]
+              },
+              {
+                "kind": "const",
+                "value": [
+                  11,
+                  112,
+                  101,
+                  177,
+                  227,
+                  209,
+                  124,
+                  69,
+                  56,
+                  157,
+                  82,
+                  127,
+                  107,
+                  4,
+                  195,
+                  205,
+                  88,
+                  184,
+                  108,
+                  115,
+                  26,
+                  160,
+                  253,
+                  181,
+                  73,
+                  182,
+                  209,
+                  188,
+                  3,
+                  248,
+                  41,
+                  70
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "false_mint"
+              }
+            ],
+            "program": {
+              "kind": "const",
+              "value": [
+                11,
+                112,
+                101,
+                177,
+                227,
+                209,
+                124,
+                69,
+                56,
+                157,
+                82,
+                127,
+                107,
+                4,
+                195,
+                205,
+                88,
+                184,
+                108,
+                115,
+                26,
+                160,
+                253,
+                181,
+                73,
+                182,
+                209,
+                188,
+                3,
+                248,
+                41,
+                70
+              ]
+            }
+          }
+        },
+        {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         },
@@ -242,20 +632,20 @@
       "args": []
     },
     {
-      "name": "deposit_collateral",
+      "name": "delete_event",
       "discriminator": [
-        156,
-        131,
-        142,
-        116,
-        146,
-        247,
-        162,
-        120
+        103,
+        111,
+        95,
+        106,
+        232,
+        24,
+        190,
+        84
       ],
       "accounts": [
         {
-          "name": "user",
+          "name": "creator",
           "writable": true,
           "signer": true
         },
@@ -301,12 +691,77 @@
           "address": "11111111111111111111111111111111"
         }
       ],
-      "args": [
+      "args": []
+    },
+    {
+      "name": "fetch_and_store_winner",
+      "discriminator": [
+        95,
+        179,
+        39,
+        9,
+        120,
+        215,
+        130,
+        21
+      ],
+      "accounts": [
         {
-          "name": "lamports",
-          "type": "u64"
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "truth_network_question",
+          "writable": true
+        },
+        {
+          "name": "truth_network_program",
+          "address": "31wdq6EJgHKRjZotAjc6vkuJ7aRyQPauwmgadPiEm8EY"
+        },
+        {
+          "name": "house_treasury",
+          "writable": true,
+          "address": "CQaZgx5jqQrz7c8shCG3vJLiiPGPrawSGhvkgXtGyxL"
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
-      ]
+      ],
+      "args": []
     },
     {
       "name": "initialize_event_counter",
@@ -364,16 +819,16 @@
       "args": []
     },
     {
-      "name": "mint_positions",
+      "name": "redeem_no_winner_after_final",
       "discriminator": [
-        67,
-        27,
-        94,
-        189,
-        44,
-        218,
-        57,
-        95
+        231,
+        71,
+        254,
+        125,
+        52,
+        33,
+        29,
+        160
       ],
       "accounts": [
         {
@@ -386,26 +841,29 @@
           "writable": true
         },
         {
-          "name": "mint_authority",
+          "name": "collateral_vault",
+          "writable": true,
           "pda": {
             "seeds": [
               {
                 "kind": "const",
                 "value": [
-                  109,
-                  105,
-                  110,
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
                   116,
+                  101,
+                  114,
+                  97,
+                  108,
                   95,
+                  118,
                   97,
                   117,
-                  116,
-                  104,
-                  111,
-                  114,
-                  105,
-                  116,
-                  121
+                  108,
+                  116
                 ]
               },
               {
@@ -416,27 +874,27 @@
           }
         },
         {
-          "name": "true_mint",
+          "name": "mint",
           "writable": true
         },
         {
-          "name": "false_mint",
-          "writable": true
-        },
-        {
-          "name": "user_true_ata",
-          "writable": true
-        },
-        {
-          "name": "user_false_ata",
+          "name": "user_ata",
           "writable": true
         },
         {
           "name": "token_program",
           "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
         }
       ],
       "args": [
+        {
+          "name": "side",
+          "type": "u8"
+        },
         {
           "name": "amount",
           "type": "u64"
@@ -529,6 +987,147 @@
           "type": "u64"
         }
       ]
+    },
+    {
+      "name": "redeem_winner_after_final",
+      "discriminator": [
+        100,
+        114,
+        219,
+        122,
+        96,
+        97,
+        139,
+        240
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "mint",
+          "writable": true
+        },
+        {
+          "name": "user_ata",
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "sweep_unclaimed_to_house",
+      "discriminator": [
+        15,
+        134,
+        161,
+        46,
+        113,
+        19,
+        95,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "event",
+          "writable": true
+        },
+        {
+          "name": "house_treasury",
+          "writable": true,
+          "address": "CQaZgx5jqQrz7c8shCG3vJLiiPGPrawSGhvkgXtGyxL"
+        },
+        {
+          "name": "collateral_vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  108,
+                  108,
+                  97,
+                  116,
+                  101,
+                  114,
+                  97,
+                  108,
+                  95,
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "event"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
     }
   ],
   "accounts": [
@@ -557,78 +1156,181 @@
         102,
         249
       ]
+    },
+    {
+      "name": "Question",
+      "discriminator": [
+        111,
+        22,
+        150,
+        220,
+        181,
+        122,
+        118,
+        127
+      ]
     }
   ],
   "errors": [
     {
       "code": 6000,
-      "name": "InvalidTitleLength",
-      "msg": "Invalid title length"
+      "name": "VotingEnded"
     },
     {
       "code": 6001,
-      "name": "InvalidBetEndTime",
-      "msg": "Invalid bet end time"
+      "name": "VotingStillActive"
     },
     {
       "code": 6002,
-      "name": "InvalidTimeOrder",
-      "msg": "Invalid time order"
+      "name": "AlreadyFinalized"
     },
     {
       "code": 6003,
-      "name": "MathOverflow",
-      "msg": "Math overflow"
+      "name": "AlreadyInitialized"
     },
     {
       "code": 6004,
-      "name": "InvalidAmount",
-      "msg": "Invalid amount"
+      "name": "AlreadyVoted"
     },
     {
       "code": 6005,
-      "name": "BettingPeriodEnded",
-      "msg": "Betting period has ended"
+      "name": "AlreadyRevealed"
     },
     {
       "code": 6006,
-      "name": "EventAlreadyResolved",
-      "msg": "Event already resolved"
+      "name": "InvalidReveal"
     },
     {
       "code": 6007,
-      "name": "InsufficientTrueBalance",
-      "msg": "Insufficient TRUE balance"
+      "name": "NotJoined"
     },
     {
       "code": 6008,
-      "name": "InsufficientFalseBalance",
-      "msg": "Insufficient FALSE balance"
+      "name": "RentNotExpiredOrVotesExist"
     },
     {
       "code": 6009,
-      "name": "VaultInsufficientFunds",
-      "msg": "Vault has insufficient funds"
+      "name": "InvalidTimeframe"
     },
     {
       "code": 6010,
-      "name": "InvalidVault",
-      "msg": "Invalid vault for this event"
+      "name": "CommitPhaseEnded"
     },
     {
       "code": 6011,
-      "name": "InvalidMint",
-      "msg": "Invalid mint for this event"
+      "name": "RevealPhaseEnded"
     },
     {
       "code": 6012,
-      "name": "InvalidTokenAccountOwner",
-      "msg": "Invalid token account owner"
+      "name": "NotEligible"
     },
     {
       "code": 6013,
-      "name": "InvalidTokenAccountMint",
-      "msg": "Invalid token account mint"
+      "name": "AlreadyClaimed"
+    },
+    {
+      "code": 6014,
+      "name": "NoEligibleVoters"
+    },
+    {
+      "code": 6015,
+      "name": "InvalidVaultAccount"
+    },
+    {
+      "code": 6016,
+      "name": "InsufficientFunds"
+    },
+    {
+      "code": 6017,
+      "name": "Overflow"
+    },
+    {
+      "code": 6018,
+      "name": "InsufficientMajority"
+    },
+    {
+      "code": 6019,
+      "name": "QuestionIdMismatch"
+    },
+    {
+      "code": 6020,
+      "name": "NotPartOfVoterList"
+    },
+    {
+      "code": 6021,
+      "name": "RemainingRewardExists"
+    },
+    {
+      "code": 6022,
+      "name": "QuestionTooShort"
+    },
+    {
+      "code": 6023,
+      "name": "RewardTooSmall"
+    },
+    {
+      "code": 6024,
+      "name": "RevealPhaseNotOver"
+    },
+    {
+      "code": 6025,
+      "name": "CannotDrainReward"
+    },
+    {
+      "code": 6026,
+      "name": "CannotDeleteQuestion"
+    },
+    {
+      "code": 6027,
+      "name": "RentNotExpired"
+    },
+    {
+      "code": 6028,
+      "name": "AlreadyEligibleOrWinner"
+    },
+    {
+      "code": 6029,
+      "name": "AlreadyDrained"
+    },
+    {
+      "code": 6030,
+      "name": "QuestionTooLong"
+    },
+    {
+      "code": 6031,
+      "name": "RejoinedAfterCommit"
+    },
+    {
+      "code": 6032,
+      "name": "AlreadyJoined"
+    },
+    {
+      "code": 6033,
+      "name": "NotInvited"
+    },
+    {
+      "code": 6034,
+      "name": "InvalidInviter"
+    },
+    {
+      "code": 6035,
+      "name": "NoInviteTokens"
+    },
+    {
+      "code": 6036,
+      "name": "AlreadyInvited"
+    },
+    {
+      "code": 6037,
+      "name": "InviteLimitReached"
+    },
+    {
+      "code": 6038,
+      "name": "ActionInProgress"
+    },
+    {
+      "code": 6039,
+      "name": "InvalidInvitee"
     }
   ],
   "types": [
@@ -696,6 +1398,62 @@
           {
             "name": "winning_option",
             "type": "u8"
+          },
+          {
+            "name": "winning_percent_bps",
+            "type": "u16"
+          },
+          {
+            "name": "votes_option_1",
+            "type": "u64"
+          },
+          {
+            "name": "votes_option_2",
+            "type": "u64"
+          },
+          {
+            "name": "consensus_threshold_bps",
+            "type": "u16"
+          },
+          {
+            "name": "resolved_at",
+            "type": "i64"
+          },
+          {
+            "name": "result_status",
+            "type": "u8"
+          },
+          {
+            "name": "total_truth_commission_sent",
+            "type": "u64"
+          },
+          {
+            "name": "pending_creator_commission",
+            "type": "u64"
+          },
+          {
+            "name": "pending_house_commission",
+            "type": "u64"
+          },
+          {
+            "name": "unclaimed_swept",
+            "type": "bool"
+          },
+          {
+            "name": "swept_at",
+            "type": "i64"
+          },
+          {
+            "name": "outstanding_true",
+            "type": "u64"
+          },
+          {
+            "name": "outstanding_false",
+            "type": "u64"
+          },
+          {
+            "name": "category",
+            "type": "u8"
           }
         ]
       }
@@ -712,6 +1470,138 @@
           {
             "name": "count",
             "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Question",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "id",
+            "type": "u64"
+          },
+          {
+            "name": "asker",
+            "type": "pubkey"
+          },
+          {
+            "name": "question_key",
+            "type": "pubkey"
+          },
+          {
+            "name": "vault_address",
+            "type": "pubkey"
+          },
+          {
+            "name": "question_text",
+            "type": "string"
+          },
+          {
+            "name": "option_1",
+            "type": "string"
+          },
+          {
+            "name": "option_2",
+            "type": "string"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "commit_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "reveal_end_time",
+            "type": "i64"
+          },
+          {
+            "name": "votes_option_1",
+            "type": "u64"
+          },
+          {
+            "name": "votes_option_2",
+            "type": "u64"
+          },
+          {
+            "name": "finalized",
+            "type": "bool"
+          },
+          {
+            "name": "committed_voters",
+            "type": "u64"
+          },
+          {
+            "name": "revealed_voters_count",
+            "type": "u64"
+          },
+          {
+            "name": "eligible_voters",
+            "type": "u64"
+          },
+          {
+            "name": "winning_option",
+            "type": "u8"
+          },
+          {
+            "name": "winning_percent",
+            "type": "f64"
+          },
+          {
+            "name": "reward_fee_taken",
+            "type": "bool"
+          },
+          {
+            "name": "snapshot_reward",
+            "type": "u64"
+          },
+          {
+            "name": "original_reward",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_remainder_count",
+            "type": "u64"
+          },
+          {
+            "name": "snapshot_total_weight",
+            "type": "u64"
+          },
+          {
+            "name": "total_distributed",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_voters_count",
+            "type": "u64"
+          },
+          {
+            "name": "claimed_weight",
+            "type": "u64"
+          },
+          {
+            "name": "voter_records_count",
+            "type": "u64"
+          },
+          {
+            "name": "voter_records_closed",
+            "type": "u64"
+          },
+          {
+            "name": "reward_drained",
+            "type": "bool"
+          },
+          {
+            "name": "action_in_progress",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
           }
         ]
       }
