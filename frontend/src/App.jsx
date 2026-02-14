@@ -22,20 +22,29 @@ export default function App() {
             <img
               src="/images/predict_drawing.png"
               alt="Logo"
-              style={{ width: 40, height: 40 }}
+              className="w-[56px] h-[40px] dark:invert"
             />
 
             <img
               src="/images/predict_text.png"
               alt="PredictSol"
-              style={{ height: 20 }}
+              className="h-[20px] dark:invert"
             />
           </div>
 
           {/* MIDDLE: NAV LINKS */}
-          <nav style={{ display: "flex", gap: 16 }}>
-            <Link to="/">Home</Link>
-            <Link to="/docs">Documentation</Link>
+          <nav className="flex gap-4">
+            <Link to="/" className="text-black dark:text-gray-300 hover:underline">
+              Event List
+            </Link>
+
+            <Link to="/create" className="text-black dark:text-gray-300 hover:underline">
+              Create Event
+            </Link>
+
+            <Link to="/docs" className="text-black dark:text-gray-300 hover:underline">
+              Documentation
+            </Link>
           </nav>
 
           {/* RIGHT: WALLET BUTTON */}
@@ -43,15 +52,6 @@ export default function App() {
         </header>
 
         <hr style={{ margin: "16px 0" }} />
-
-        <div style={{ display: "flex", gap: 16, marginBottom: "2em" }}>
-          <Link to="/" style={{ textDecoration: "none", fontWeight: "bold" }}>
-            Event List
-          </Link>
-          <Link to="/create" style={{ textDecoration: "none", fontWeight: "bold" }}>
-            Create Event
-          </Link>
-        </div>
 
 
         <Routes>

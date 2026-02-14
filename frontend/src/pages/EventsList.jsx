@@ -27,12 +27,12 @@ export default function EventsList() {
 
   const filteredEvents = useMemo(() => {
     let list = [...events];
-  
+
     // category filter
     if (selectedCategory !== "all") {
       list = list.filter((row) => Number(row.account.category) === Number(selectedCategory));
     }
-  
+
     // search filter
     if (searchTerm.trim() !== "") {
       const q = searchTerm.toLowerCase();
@@ -44,7 +44,7 @@ export default function EventsList() {
         );
       });
     }
-  
+
     // sorting
     if (sortMode === "new") {
       list.sort(
@@ -53,7 +53,7 @@ export default function EventsList() {
           (a.account.createdAt?.toNumber?.() ?? 0)
       );
     }
-  
+
     if (sortMode === "trending") {
       list.sort((a, b) => {
         const av = vaultBalances[a.account.collateralVault.toBase58()] ?? 0;
@@ -61,10 +61,10 @@ export default function EventsList() {
         return bv - av; // higher SOL = more trending
       });
     }
-  
+
     return list;
   }, [events, selectedCategory, searchTerm, sortMode, vaultBalances]);
-   
+
 
   function getCategoryLabel(cat) {
     const found = CATEGORY_OPTIONS.find((x) => x.value === Number(cat));
@@ -90,33 +90,33 @@ export default function EventsList() {
     if (!program) return;
     setErr("");
     setLoading(true);
-  
+
     try {
       const rows = await program.account.event.all();
-  
+
       rows.sort(
         (a, b) =>
           (b.account.createdAt?.toNumber?.() ?? 0) -
           (a.account.createdAt?.toNumber?.() ?? 0)
       );
-  
+
       setEvents(rows);
-  
+
       // Fetch vault balances in ONE RPC call
       const conn = program.provider.connection;
-  
+
       const vaultKeys = rows.map((r) => r.account.collateralVault);
-  
+
       const infos = await conn.getMultipleAccountsInfo(vaultKeys);
-  
+
       const map = {};
       for (let i = 0; i < vaultKeys.length; i++) {
         const k = vaultKeys[i].toBase58();
         map[k] = infos[i]?.lamports ?? 0;
       }
-  
+
       setVaultBalances(map);
-  
+
     } catch (e) {
       console.log("load events error: ", e);
       setErr(e?.message || String(e));
@@ -124,7 +124,7 @@ export default function EventsList() {
       setLoading(false);
     }
   }
-  
+
 
   useEffect(() => {
     if (!program) return;
@@ -134,94 +134,106 @@ export default function EventsList() {
   return (
     <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90">
       {/* Controls */}
-<div className="flex flex-col gap-4 mb-6">
+      <div className="flex flex-col gap-4 mb-6">
 
-{/* Row 1: Refresh + Wallet status */}
-<div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-  <button
-    onClick={loadEvents}
-    disabled={loading}
-    className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 disabled:opacity-50"
-  >
-    {loading ? "Loading..." : "Refresh"}
-  </button>
+        {/* Row 1: Refresh + Wallet status */}
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <button
+            onClick={loadEvents}
+            disabled={loading}
+            className="text-sm text-gray-500 hover:underline disabled:opacity-50"
+          >
+            {loading ? "Loading..." : "Refresh"}
+          </button>
 
-  <div className="text-sm text-gray-500 dark:text-gray-400">
-    {wallet.publicKey
-      ? "Wallet Connected"
-      : "Read-only mode (connect wallet to interact)"}
-  </div>
-</div>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            {wallet.publicKey
+              ? "Wallet Connected"
+              : "Read-only mode (connect wallet to interact)"}
+          </div>
+        </div>
 
-{/* Row 2: LEFT buttons, RIGHT search */}
-<div className="flex flex-col sm:flex-row gap-4 sm:items-start sm:justify-between">
+        {/* Row 2: LEFT buttons, RIGHT search */}
+        <div className="flex flex-col sm:flex-row gap-4 sm:items-start sm:justify-between">
 
-  {/* LEFT SIDE BUTTONS */}
-  <div className="flex flex-wrap gap-2 sm:w-[70%]">
-    <button
-      onClick={() => setSelectedCategory("all")}
-      className={`px-4 py-2 rounded-xl text-sm font-bold border transition
-        ${
-          selectedCategory === "all"
-            ? "bg-gray-900 text-white dark:bg-white dark:text-black border-gray-900 dark:border-white"
-            : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
-        }`}
-    >
-      All
-    </button>
+          {/* LEFT SIDE BUTTONS */}
+          <div className="flex flex-wrap gap-2 sm:w-[70%]">
+            <button
+              onClick={() => setSelectedCategory("all")}
+              className={`px-4 py-2 rounded-xl text-sm font-bold border transition
+        ${selectedCategory === "all"
+                  ? "bg-gray-900 text-white dark:bg-white dark:text-black border-gray-900 dark:border-white"
+                  : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
+                }`}
+            >
+              All
+            </button>
 
-    <button
-      onClick={() => setSortMode("trending")}
-      className={`px-4 py-2 rounded-xl text-sm font-bold border transition
-        ${
-          sortMode === "trending"
-            ? "bg-indigo-600 text-white border-indigo-600"
-            : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
-        }`}
-    >
-      Trending
-    </button>
+            <button
+              onClick={() => setSortMode("trending")}
+              className={`px-4 py-2 rounded-xl text-sm font-bold border transition
+        ${sortMode === "trending"
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
+                }`}
+            >
+              Trending
+            </button>
 
-    <button
-      onClick={() => setSortMode("new")}
-      className={`px-4 py-2 rounded-xl text-sm font-bold border transition
-        ${
-          sortMode === "new"
-            ? "bg-indigo-600 text-white border-indigo-600"
-            : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
-        }`}
-    >
-      New
-    </button>
+            <button
+              onClick={() => setSortMode("new")}
+              className={`px-4 py-2 rounded-xl text-sm font-bold border transition
+        ${sortMode === "new"
+                  ? "bg-indigo-600 text-white border-indigo-600"
+                  : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
+                }`}
+            >
+              New
+            </button>
 
-    {CATEGORY_OPTIONS.map((cat) => (
-      <button
-        key={cat.value}
-        onClick={() => setSelectedCategory(cat.value)}
-        className={`px-4 py-2 rounded-xl text-sm font-bold border transition
-          ${
-            Number(selectedCategory) === Number(cat.value)
-              ? "bg-indigo-600 text-white border-indigo-600"
-              : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
-          }`}
-      >
-        {cat.label}
-      </button>
-    ))}
-  </div>
+            {CATEGORY_OPTIONS.map((cat) => (
+              <button
+                key={cat.value}
+                onClick={() => setSelectedCategory(cat.value)}
+                className={`px-4 py-2 rounded-xl text-sm font-bold border transition
+          ${Number(selectedCategory) === Number(cat.value)
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200 border-gray-300 dark:border-gray-700"
+                  }`}
+              >
+                {cat.label}
+              </button>
+            ))}
+          </div>
 
-  {/* RIGHT SIDE SEARCH */}
-  <div className="sm:w-[30%] w-full">
-    <input
-      value={searchTerm}
-      onChange={(e) => setSearchTerm(e.target.value)}
-      placeholder="Search event..."
-      className="w-full px-4 py-2 rounded-xl border border-gray-300 dark:border-gray-700
-                 bg-white dark:bg-gray-900 text-sm"
-    />
-  </div>
-</div>
-</div>
+          {/* RIGHT SIDE SEARCH */}
+          <div className="sm:w-[30%] w-full relative">
+            <input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search event..."
+              className="w-full px-4 py-2 pr-10 rounded-xl border border-gray-400 dark:border-gray-700
+                bg-white dark:bg-gray-900 text-sm
+                focus:outline-none focus:ring-2 focus:ring-gray-400 focus:border-gray-400"
+            />
+
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="w-5 h-5 absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M21 21l-4.35-4.35m1.85-5.15a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
+          </div>
+        </div>
+      </div>
 
 
       {err && <div className="text-red-500 mb-4">{err}</div>}
