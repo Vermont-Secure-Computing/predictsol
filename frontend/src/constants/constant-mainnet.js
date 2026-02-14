@@ -6,7 +6,7 @@ export const PREDICTSOL_PROGRAM_ID = new PublicKey("Fhud5X7RHZT6159Mr964dhZA6SUD
 export const TRUTH_NETWORK_PROGRAM_ID = new PublicKey("FFL71XjBkjq5gce7EtpB7Wa5p8qnRNueLKSzM4tkEMoc");
 
 export const FALLBACK_RPC_URLS = [
-  localStorage.getItem("customRpcUrl") || "https://solana-rpc.publicnode.com",
+  localStorage.getItem("customRpcUrl") || "https://mainnet.helius-rpc.com/?api-key=7656b607-68f1-48f5-9636-ba3e9118125d",
   "https://solana-rpc.publicnode.com",
   "https://api.mainnet-beta.solana.com",
 ];

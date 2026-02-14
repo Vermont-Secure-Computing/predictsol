@@ -393,7 +393,7 @@ export default function CreateEvent() {
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={busy}
-              placeholder="Example: Will Bitcoin reach $150K before 2026?"
+              placeholder="Example: Will Bitcoin hit $1m in the future?"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
                         dark:border-gray-800 dark:bg-gray-950 dark:text-white
                         focus:outline-none focus:ring-2 focus:ring-indigo-500"
