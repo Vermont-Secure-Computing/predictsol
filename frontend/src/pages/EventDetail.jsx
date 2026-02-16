@@ -23,6 +23,8 @@ import { getPredictReadonlyProgram, getTruthReadonlyProgram } from "../lib/ancho
 import { sendAndConfirmSafe } from "../utils/sendTx";
 import { getConstants } from "../constants";
 
+import { TradeButtons } from "../components/TradeButton";
+
 function toBaseUnits(amountStr) {
   const n = Number(amountStr);
   if (!Number.isFinite(n) || n <= 0) return null;
@@ -1435,6 +1437,9 @@ export default function EventDetail() {
 
               </div>
             </div>
+            
+            {ev && <TradeButtons ev={ev}/>}
+
           </div>
 
           {/* RIGHT: actions */}
