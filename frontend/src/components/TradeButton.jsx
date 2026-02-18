@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useState, useMemo } from "react";
 import { useBestPools } from "../hooks/dexFetcher";
 import TruthOhlcvChart from "./OHLCVchart";
+import { FaChevronDown, FaChevronUp, FaExclamation } from "react-icons/fa";
 
 const WSOL = "So11111111111111111111111111111111111111112";
 
@@ -17,8 +18,17 @@ export function TradeButtons({ ev }) {
   const { loading, err, truePool, falsePool } = useBestPools({ trueMint, falseMint });
 
   const show = !!truePool || !!falsePool;
-
   const dexName = truePool?.dexId || falsePool?.dexId || "DEX";
+
+  const [showDexNote, setShowDexNote ] = useState(false);
+
+  const bettingClosed = useMemo(() => {
+    if (!ev.betEndTime) return false;
+    const now = Math.floor(Date.now() / 1000);
+    return now >= Number(ev.betEndTime);
+  }, [ev?.betEndTime]);
+
+  const eventLocked = ev?.resolved || bettingClosed;
 
   if (!show) return null;
 
@@ -31,9 +41,79 @@ export function TradeButtons({ ev }) {
         ) : err ? (
           <div className="text-xs text-rose-600 dark:text-rose-300">Pool check error</div>
         ) : (
-          <div className="text-xs opacity-70">
-            {truePool ? `TRUE LP: $${(truePool?.liquidity?.usd ?? 0).toFixed(1)}` : "TRUE: no pool"} ·{" "}
-            {falsePool ? `FALSE LP: $${(falsePool?.liquidity?.usd ?? 0).toFixed(1)}` : "FALSE: no pool"}
+          <div className="flex flex-col items-end text-xs opacity-80 leading-tight">
+            
+            <div className="flex gap-3 text-xs font-medium">
+              {truePool?.priceNative && (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  TRUE {Number(truePool.priceNative).toFixed(4)} SOL
+                </span>
+              )}
+              {falsePool?.priceNative && (
+                <span className="text-rose-600 dark:text-rose-400">
+                  FALSE {Number(falsePool.priceNative).toFixed(4)} SOL
+                </span>
+              )}
+            </div>
+
+            <div className="text-xs opacity-70">
+              {truePool ? `TRUE LP: $${(truePool?.liquidity?.usd ?? 0).toFixed(1)}` : "TRUE: no pool"} ·{" "}
+              {falsePool ? `FALSE LP: $${(falsePool?.liquidity?.usd ?? 0).toFixed(1)}` : "FALSE: no pool"}
+            </div>
+
+          </div>
+        )}
+      </div>
+
+      <div className="mb-2">
+        <button
+          type="button"
+          onClick={() => setShowDexNote(v => !v)}
+          className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+        >
+          <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-white text-[11px] dark:border-gray-700 dark:bg-gray-900">
+            <FaExclamation />
+          </span>
+
+          <span>DEX warnings</span>
+
+          {showDexNote ? (
+            <FaChevronUp className="h-4 w-4 opacity-70" />
+          ) : (
+            <FaChevronDown className="h-4 w-4 opacity-70" />
+          )}
+        </button>
+
+        {showDexNote && (
+          <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-200">
+            <div className="space-y-1.5">
+              <div className="font-semibold">
+                Why DEX shows “This token is mintable”
+              </div>
+
+              <div className="opacity-90">
+                TRUE/FALSE shares are minted by a program-controlled PDA while the event is active,
+                so users can buy positions. This is expected for prediction share tokens.
+              </div>
+
+              <div className="opacity-90">
+                <span className="font-semibold">Minting status:</span>{" "}
+                {eventLocked ? (
+                  <span className="text-emerald-700 dark:text-emerald-300 font-medium">
+                    minting disabled for this event
+                  </span>
+                ) : (
+                  <span className="text-amber-700 dark:text-amber-300 font-medium">
+                    minting allowed only during betting window
+                  </span>
+                )}
+              </div>
+              {/* 
+              <div className="pt-1 opacity-80">
+                DEX scanners only check mint authority flags — they don’t see your
+                program’s time-based minting restrictions.
+              </div> */}
+            </div>
           </div>
         )}
       </div>
@@ -76,8 +156,8 @@ export function TradeButtons({ ev }) {
       </div>
 
       {/* {truePool && <TruthOhlcvChart
-        truePoolAddress={truePool.pairAddress}
-        falsePoolAddress={falsePool.pairAddress}
+        truePoolAddress={truePool?.pairAddress}
+        falsePoolAddress={falsePool?.pairAddress}
         timeframe="minute"
         aggregate={5}
         limit={200}

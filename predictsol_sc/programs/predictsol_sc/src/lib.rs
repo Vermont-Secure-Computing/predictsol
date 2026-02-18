@@ -149,7 +149,7 @@ fn create_and_init_spl_mint_pda<'info>(
         },
     );
 
-    token::initialize_mint(cpi, decimals, mint_authority, Some(mint_authority))?;
+    token::initialize_mint(cpi, decimals, mint_authority, None)?;
 
     Ok(())
 }
@@ -756,7 +756,19 @@ pub mod predictol_sc {
     pub fn buy_positions_with_fee(ctx: Context<BuyPositionsWithFee>, lamports: u64) -> Result<()> {
         require!(lamports > 0, PredictError::InvalidAmount);
 
-        // 1) verify truth vault matches the truth question
+        // 1) verification
+        // Block buys after betting window ends
+        require!(
+            now < ctx.accounts.event.bet_end_time,
+            PredictError::BettingPeriodEnded
+        );
+        // No one can buy positions after the event has been resolved
+        require!(
+            !ctx.accounts.event.resolved,
+            PredictError::EventResolved
+        );
+
+        // verify truth vault matches the truth question
         require_keys_eq!(
             ctx.accounts.truth_network_vault.key(),
             ctx.accounts.truth_network_question.vault_address,

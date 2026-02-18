@@ -24,6 +24,7 @@ import { sendAndConfirmSafe } from "../utils/sendTx";
 import { getConstants } from "../constants";
 
 import { TradeButtons } from "../components/TradeButton";
+import TxHint from "../components/TxHints";
 
 function toBaseUnits(amountStr) {
   const n = Number(amountStr);
@@ -526,7 +527,17 @@ export default function EventDetail() {
     
   } 
 
+  const canSweepNow = useMemo(() => {
+    if (!ev?.resolved || !ev?.resolvedAt) return false;
+
+    const now = Math.floor(Date.now() / 1000);
+    console.log("now: ", now)
+    console.log("sweep delay: ", Number(ev.resolvedAt) + constants.SWEEP_DELAY_SECS)
+    return now >= Number(ev.resolvedAt) + constants.SWEEP_DELAY_SECS;
+  });
+  console.log("canSweepNow: ", canSweepNow, constants.SWEEP_DELAY_SECS)
   const showSweepButton =
+    canSweepNow &&
     walletConnected &&
     sweepReady &&
     vaultHasSweepable &&
@@ -1440,6 +1451,25 @@ export default function EventDetail() {
             
             {ev && <TradeButtons ev={ev}/>}
 
+            {/* <iframe id="dextools-widget"
+              title="DEXTools Trading Chart"
+              width="500"
+              height="400" 
+              src="https://www.dextools.io/app/solana/pair-explorer/63jKBR9Ex3WSdzQkmSKHPmN234qDm1qzfqn2XzbovxK3?theme=light&chartType=2&chartResolution=30&drawingToolbars=false">
+            </iframe> */}
+
+            {/* <div className="mt-4 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800">
+              <iframe
+                src={`https://birdeye.so/token/${ev.trueMint?.toBase58?.()}?chain=solana&view=chart&theme=light&embed=true`}
+                title="Birdeye Chart"
+                width="100%"
+                height="480"
+                frameBorder="0"
+                loading="lazy"
+              />
+            </div> */}
+
+
           </div>
 
           {/* RIGHT: actions */}
@@ -1498,7 +1528,11 @@ export default function EventDetail() {
                 dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
                 {/* === START: Buy Tokens UI === */}
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                  Buy Tokens (Deposit SOL → Receive TRUE + FALSE)
+                  Add Liquidity (Deposit SOL → Receive TRUE + FALSE)
+                </div>
+                <TxHint>First buy ~3 Transactions • Later ~1 Transaction</TxHint>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 mb-1">
+                  Extra transactions are for creating your TRUE/FALSE token accounts.
                 </div>
 
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1527,7 +1561,7 @@ export default function EventDetail() {
                     `}
 
                   >
-                    {minting ? "Processing..." : "Buy TRUE + FALSE"}
+                    {minting ? "Processing..." : "Add Liquidity"}
                   </button>
 
                   <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>
@@ -1570,11 +1604,11 @@ export default function EventDetail() {
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>
                     Redeem (While Betting Active)
                   </div>
-
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
-                    Redeem requires equal amounts of TRUE + FALSE. Example: 1 TRUE + 1 FALSE = 0.99 SOL.
+                    Redeem requires equal amounts of TRUE + FALSE. Example: 1 TRUE + 1 FALSE = 1 SOL.
                   </div>
-
+                  <TxHint>~1 Transaction</TxHint>
+                  
                   {!walletConnected ? (
                     <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
                       Connect wallet to redeem.
@@ -1688,6 +1722,7 @@ export default function EventDetail() {
                       <span> (no truth question loaded)</span>
                     )}
                   </div>
+                  <TxHint>~1 Transaction</TxHint>
 
                   <button
                     onClick={getResult}
@@ -1701,7 +1736,7 @@ export default function EventDetail() {
                   >
                     {finalizing ? "Finalizing..." : "Get Result"}
                   </button>
-
+                  
                   {!walletConnected && (
                     <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
                       Connect wallet to finalize and store result.
@@ -1733,6 +1768,7 @@ export default function EventDetail() {
                       <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
                         expected: 1 <b>{winnerLabel(ev)}</b> token = 1 SOL
                       </div>
+                      <TxHint>~1 Transaction</TxHint>
 
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1786,6 +1822,7 @@ export default function EventDetail() {
                         >
                           {postRedeeming ? "Redeeming..." : `Redeem ${winnerLabel(ev)} → SOL`}
                         </button>
+                        
                       </div>
                     </>
                   ) : (
@@ -1797,6 +1834,7 @@ export default function EventDetail() {
                         You can redeem TRUE or FALSE.
                         {" "}(expected: 1 token = 0.5 SOL)
                       </div>
+                      <TxHint>~1 Transaction</TxHint>
 
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -1865,6 +1903,7 @@ export default function EventDetail() {
                         >
                           {postRedeeming ? "Redeeming..." : `Redeem ${postRedeemSide} → SOL`}
                         </button>
+                        
                       </div>
                     </>
                   )}
@@ -1907,7 +1946,8 @@ export default function EventDetail() {
                       </>
                     )}
                   </div>
-
+                  <TxHint>~1 Transaction</TxHint>
+                  
                   {/* Claim Commission (creator only, after betting ends) */}
                   {walletConnected && isCreator(ev) && (
                     <div style={{ marginTop: 12 }}>
@@ -1928,6 +1968,7 @@ export default function EventDetail() {
                       >
                         {claimingCreator ? "Claiming..." : "Claim Commission"}
                       </button>
+                      
 
                       {claimCreatorErr && (
                         <div style={{ marginTop: 10, color: "crimson", fontSize: 13 }}>
@@ -1961,17 +2002,21 @@ export default function EventDetail() {
                       {toDateTime(sweepAfterTs)}
                     </strong>.
                   </p>
+                  <TxHint>~1 Transaction</TxHint>
 
                   {showSweepButton &&
-                    <button
-                      onClick={() => setShowSweepConfirm(true)}
-                      className="
-                        px-4 py-2 rounded-lg font-medium text-white transition
-                        bg-red-600 hover:bg-red-700 active:bg-red-800
-                      "
-                    >
-                      Sweep Unclaimed SOL to House
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setShowSweepConfirm(true)}
+                        className="
+                          mt-2 px-4 py-2 rounded-lg font-medium text-white transition
+                          bg-red-600 hover:bg-red-700 active:bg-red-800
+                        "
+                      >
+                        Sweep Unclaimed SOL to House
+                      </button>
+                      
+                    </>
                   } 
 
                 </div>
@@ -1982,6 +2027,7 @@ export default function EventDetail() {
                   <p className="text-sm text-red-800 mb-2">
                     This event is fully settled and can be deleted.
                   </p>
+                  <TxHint>~1 Transaction</TxHint>
 
                   <button
                     onClick={handleDeleteEvent}
@@ -1992,6 +2038,7 @@ export default function EventDetail() {
                   >
                     Delete Event
                   </button>
+                  
                 </div>
               )}
             </div>
