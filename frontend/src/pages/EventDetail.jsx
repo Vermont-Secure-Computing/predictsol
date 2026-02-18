@@ -1451,25 +1451,6 @@ export default function EventDetail() {
             
             {ev && <TradeButtons ev={ev}/>}
 
-            {/* <iframe id="dextools-widget"
-              title="DEXTools Trading Chart"
-              width="500"
-              height="400" 
-              src="https://www.dextools.io/app/solana/pair-explorer/63jKBR9Ex3WSdzQkmSKHPmN234qDm1qzfqn2XzbovxK3?theme=light&chartType=2&chartResolution=30&drawingToolbars=false">
-            </iframe> */}
-
-            {/* <div className="mt-4 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800">
-              <iframe
-                src={`https://birdeye.so/token/${ev.trueMint?.toBase58?.()}?chain=solana&view=chart&theme=light&embed=true`}
-                title="Birdeye Chart"
-                width="100%"
-                height="480"
-                frameBorder="0"
-                loading="lazy"
-              />
-            </div> */}
-
-
           </div>
 
           {/* RIGHT: actions */}
