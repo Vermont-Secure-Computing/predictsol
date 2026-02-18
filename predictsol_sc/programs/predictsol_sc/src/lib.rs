@@ -755,6 +755,7 @@ pub mod predictol_sc {
 
     pub fn buy_positions_with_fee(ctx: Context<BuyPositionsWithFee>, lamports: u64) -> Result<()> {
         require!(lamports > 0, PredictError::InvalidAmount);
+        let now = Clock::get()?.unix_timestamp;
 
         // 1) verification
         // Block buys after betting window ends
@@ -1720,6 +1721,8 @@ pub enum PredictError {
     InvalidWinningOption,
     #[msg("Event is not finalized yet")]
     EventNotResolved,
+    #[msg("Event already finalized, no buying allowed.")]
+    EventResolved,
     #[msg("Invalid result status for this action")]
     InvalidResultStatus,
     #[msg("This token is not the winning side")]
