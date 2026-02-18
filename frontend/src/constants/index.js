@@ -23,12 +23,14 @@ export function getConstants() {
   ];
 
   const MIN_BUY_SOL = 0.000001;
+  const SWEEP_DELAY_SECS = 10 * 60//30 * 24 * 60 * 60; // 30 days
 
   return {
     ...base,
     VERSION_NAME: versionName,
     AVAILABLE_VERSIONS: versionMap,
     CATEGORY_OPTIONS,
-    MIN_BUY_SOL
+    MIN_BUY_SOL,
+    SWEEP_DELAY_SECS
   };
 }

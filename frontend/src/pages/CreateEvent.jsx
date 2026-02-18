@@ -27,6 +27,7 @@ import {
 
 import { sendAndConfirmSafe } from "../utils/sendTx";
 import { getConstants } from "../constants";
+import TxHint from "../components/TxHints";
 
 
 function toUnixSeconds(dateStr) {
@@ -388,12 +389,15 @@ export default function CreateEvent() {
             <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
               Title (10-150 characters)
             </label>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Phrase the title as a clear TRUE/FALSE question.
+            </p>
     
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               disabled={busy}
-              placeholder="Example: Will Bitcoin hit $1m in the future?"
+              placeholder="Example: Will BTC exceed $100,000 by the resolution date?"
               className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
                         dark:border-gray-800 dark:bg-gray-950 dark:text-white
                         focus:outline-none focus:ring-2 focus:ring-indigo-500"
@@ -480,6 +484,11 @@ export default function CreateEvent() {
           >
             {busy ? "Creating..." : "Create Event"}
           </button>
+          <TxHint>First create ~4 transactions • Later ~3 transactions</TxHint>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400">
+            First time only: initializes your question counter account.
+          </div>
+
     
           {/* Message */}
           {msg && (

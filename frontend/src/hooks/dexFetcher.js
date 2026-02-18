@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchDexscreenerPairsSolana, pickBestSolPool } from "../utils/dexscreener";
+import { fetchDexscreenerPairsSolana, pickBestSolPool, getPoolsByMint } from "../utils/getPools";
 
 export function useBestPools({ trueMint, falseMint }) {
   const [state, setState] = useState({
@@ -23,6 +23,9 @@ export function useBestPools({ trueMint, falseMint }) {
 
         const truePool = pickBestSolPool(truePairs);
         const falsePool = pickBestSolPool(falsePairs);
+
+        const tPool = await getPoolsByMint(trueMint, "https://mainnet.helius-rpc.com/?api-key=53dd1693-43cc-4545-880e-74fa732ab766")
+        console.log("solana web3 pool: ", tPool)
 
         console.log("truePool: ", truePool)
         console.log("falsePool: ", falsePool)
