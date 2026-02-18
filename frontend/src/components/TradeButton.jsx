@@ -32,6 +32,10 @@ export function TradeButtons({ ev }) {
 
   if (!show) return null;
 
+  const hasTrue = !!truePool?.pairAddress;
+  const hasFalse = !!falsePool?.pairAddress;
+  const hasBoth = hasTrue && hasFalse;
+
   return (
     <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
       <div className="mb-2 flex items-center justify-between">
@@ -162,6 +166,70 @@ export function TradeButtons({ ev }) {
         aggregate={5}
         limit={200}
       />} */}
+
+      {/* Charts */}
+      <div
+        className={[
+          "mt-3 grid gap-3",
+          hasBoth ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
+        ].join(" ")}
+      >
+        {/* TRUE */}
+        {hasTrue && (
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950/40">
+            <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
+              <span>TRUE chart</span>
+              {truePool?.priceNative && (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  {Number(truePool.priceNative).toFixed(4)} SOL
+                </span>
+              )}
+            </div>
+
+            <iframe
+              title="GeckoTerminal TRUE"
+              src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=1d&bg_color=f1f5f9`}
+              frameBorder={0}
+              allow="clipboard-write"
+              allowFullScreen={false}
+              className={[
+                "block w-full",
+                hasBoth ? "h-[340px] md:h-[400px]" : "h-[420px] md:h-[520px]",
+                "bg-white dark:bg-gray-950",
+              ].join(" ")}
+            />
+          </div>
+        )}
+
+        {/* FALSE */}
+        {hasFalse && (
+          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950/40">
+            <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
+              <span>FALSE chart</span>
+              {falsePool?.priceNative && (
+                <span className="text-rose-600 dark:text-rose-400">
+                  {Number(falsePool.priceNative).toFixed(4)} SOL
+                </span>
+              )}
+            </div>
+
+            <iframe
+              title="GeckoTerminal FALSE"
+              src={`https://www.geckoterminal.com/solana/pools/${falsePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=1d&bg_color=f1f5f9`}
+              frameBorder={0}
+              allow="clipboard-write"
+              allowFullScreen={false}
+              className={[
+                "block w-full",
+                hasBoth ? "h-[340px] md:h-[400px]" : "h-[420px] md:h-[520px]",
+                "bg-white dark:bg-gray-950",
+              ].join(" ")}
+            />
+          </div>
+        )}
+      </div>
+
+
     </div>
   );
 }
