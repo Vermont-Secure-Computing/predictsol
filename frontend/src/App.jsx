@@ -4,9 +4,13 @@ import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import EventsList from "./pages/EventsList";
 import CreateEvent from "./pages/CreateEvent";
 import EventDetail from "./pages/EventDetail";
+<<<<<<< HEAD
 import Footer from "./components/Footer";
 import SecurityPolicy from "./pages/SecurityPolicy";
 import { getConstants } from "./constants";
+=======
+import FAQ from "./pages/FAQ";
+>>>>>>> cf4244d (added faq and rpc)
 
 export default function App() {
 
@@ -79,6 +83,30 @@ export default function App() {
               <WalletMultiButton />
             </div>
           </div>
+<<<<<<< HEAD
+=======
+
+          {/* MIDDLE: NAV LINKS */}
+          <nav className="flex gap-4">
+            <Link to="/" className="text-black dark:text-gray-300 hover:underline">
+              Event List
+            </Link>
+
+            <Link to="/create" className="text-black dark:text-gray-300 hover:underline">
+              Create Event
+            </Link>
+
+            <Link to="/docs" className="text-black dark:text-gray-300 hover:underline">
+              White Paper
+            </Link>
+            <Link to="/faq" className="text-black dark:text-gray-300 hover:underline">
+              FAQ
+            </Link>
+          </nav>
+
+          {/* RIGHT: WALLET BUTTON */}
+          <WalletMultiButton />
+>>>>>>> cf4244d (added faq and rpc)
         </header>
 
         <hr style={{ margin: "16px 0" }} />
@@ -87,7 +115,11 @@ export default function App() {
           <Route path="/" element={<EventsList />} />
           <Route path="/create" element={<CreateEvent />} />
           <Route path="/event/:eventPda" element={<EventDetail />} />
+<<<<<<< HEAD
           <Route path="/security-policy" element={<SecurityPolicy />} />
+=======
+          <Route path="/faq" element={<FAQ />} />
+>>>>>>> cf4244d (added faq and rpc)
         </Routes>
 
         <Footer />
