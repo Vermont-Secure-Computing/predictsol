@@ -219,6 +219,11 @@ export default function CreateEvent() {
     try {
       await sendAndConfirmSafe({ conn, wallet, tx: txCreate, label: "truth:createQuestion", simulate: null });
     } catch (e) {
+      console.error(e);
+      if (e.logs) {
+        console.log("Program logs:");
+        e.logs.forEach(log => console.log(log));
+      }
       // if send failed but account exists, treat as success
       const existsAfter = await truth.account.question.fetch(questionPda).catch(() => null);
       if (existsAfter) {

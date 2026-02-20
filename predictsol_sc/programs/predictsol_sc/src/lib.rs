@@ -649,8 +649,8 @@ pub mod predictol_sc {
         let true_name = format!("PS-{}-TRUE", prefix);
         let false_name = format!("PS-{}-FALSE", prefix);
 
-        let true_symbol = true_name.clone();
-        let false_symbol = false_name.clone();
+        let true_symbol = "TRUE".to_string();
+        let false_symbol = "FALSE".to_string();
 
         let true_uri = TRUE_TOKEN_URI.to_string();
         let false_uri = FALSE_TOKEN_URI.to_string();
