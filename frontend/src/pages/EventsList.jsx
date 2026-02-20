@@ -25,8 +25,17 @@ export default function EventsList() {
     return getPredictReadonlyProgram();
   }, [wallet.publicKey, wallet.connected]);
 
+  const HIDDEN_EVENT_PDAS = new Set([
+    "8hcdUsgPMJqw3xWLpKZpocWUiGNtFhe6JuRyHEKu5nYZ",
+    "461PCye5MbmUyLNjAtsNPHKKEt2xeDu7bQad16CY1K4T",
+  ]);
+
   const filteredEvents = useMemo(() => {
     let list = [...events];
+
+    // hide specific events by PDA
+    list = list.filter((row) => !HIDDEN_EVENT_PDAS.has(row.publicKey.toBase58()));
+
 
     // category filter
     if (selectedCategory !== "all") {
