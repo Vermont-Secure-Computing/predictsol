@@ -1763,3 +1763,21 @@ pub enum PredictError {
     InvalidResolvedAt,
 }
 
+
+#[cfg(not(feature = "no-entrypoint"))]
+use solana_security_txt::security_txt;
+
+#[cfg(not(feature = "no-entrypoint"))]
+security_txt! {
+    name: "PredictSol",
+    project_url: "https://predictsol.com",
+    contacts: "mailto:office@vtscc.org",
+    policy: "https://predictsol.com/security-policy",
+
+    preferred_languages: "en",
+    source_code: "https://github.com/Vermont-Secure-Computing/predictsol",
+    auditors: "Vermont Secure Computing Consultancy (internal review)"
+}
+
+
+
