@@ -71,7 +71,10 @@ export default function App() {
                 Create Event
               </Link>
               <Link to="/docs" className="text-gray-700 hover:underline dark:text-gray-300">
-                Documentation
+                White Paper
+              </Link>
+              <Link to="/faq" className="text-gray-700 hover:underline dark:text-gray-300">
+                FAQ
               </Link>
             </nav>
 
