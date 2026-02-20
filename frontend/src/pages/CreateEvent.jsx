@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { BN } from "@coral-xyz/anchor";
@@ -26,6 +26,7 @@ import {
 } from "../lib/truthPdas";
 
 import { sendAndConfirmSafe } from "../utils/sendTx";
+import { addDays, maxDatetimeLocal } from "../utils/dateHelpers";
 import { getConstants } from "../constants";
 import TxHint from "../components/TxHints";
 
@@ -37,7 +38,12 @@ function toUnixSeconds(dateStr) {
 
 
 export default function CreateEvent() {
-  const { CATEGORY_OPTIONS } = getConstants();
+  const { 
+    CATEGORY_OPTIONS, 
+    DEFAULT_COMMIT_DAYS,
+    DEFAULT_REVEAL_DAYS,
+    MIN_COMMIT_DAYS,
+    MIN_REVEAL_DAYS } = getConstants();
   const wallet = useWallet();
   const nav = useNavigate();
 
@@ -95,6 +101,33 @@ export default function CreateEvent() {
   }
 
 
+  // Auto fill commit and reveal end time
+  useEffect(() => {
+    if (!betEnd) return;
+
+    const commitDays = DEFAULT_COMMIT_DAYS;
+    const revealDays = DEFAULT_REVEAL_DAYS;
+
+    const nextCommit = addDays(betEnd, commitDays);
+    setCommitEnd(nextCommit);
+
+    setRevealEnd(addDays(nextCommit, revealDays));
+    
+  }, [betEnd]);
+
+
+  useEffect(() => {
+    if (!commitEnd) return;
+
+    const revealDays = DEFAULT_REVEAL_DAYS;
+
+    // enforce reveal minimum
+    const minReveal = addDays(commitEnd, MIN_REVEAL_DAYS);
+
+    const nextReveal = addDays(commitEnd, revealDays);
+    setRevealEnd(maxDatetimeLocal(nextReveal, minReveal));
+    
+  }, [commitEnd]);
 
 
   async function ensureCounter() {
@@ -251,15 +284,15 @@ export default function CreateEvent() {
         return alert("Invalid date/time input.");
       }
 
-      // if (betMs <= now) return alert("Close date must be in the future.");
+      if (betMs <= now) return alert("Close date must be in the future.");
 
-      // if (commitMs - betMs < 1 * 24 * 60 * 60 * 1000) {
-      //   return alert("Commit End Time must be at least 1 day after Betting Close Date.");
-      // }
+      if (commitMs - betMs < 1 * 24 * 60 * 60 * 1000) {
+        return alert("Commit End Time must be at least 1 day after Betting Close Date.");
+      }
 
-      // if (revealMs - commitMs < 1 * 24 * 60 * 60 * 1000) {
-      //   return alert("Reveal End Time must be at least 1 day after Commit End Time.");
-      // }
+      if (revealMs - commitMs < 1 * 24 * 60 * 60 * 1000) {
+        return alert("Reveal End Time must be at least 1 day after Commit End Time.");
+      }
 
       const bet = new BN(Math.floor(betMs / 1000));
       const commit = new BN(Math.floor(commitMs / 1000));
@@ -387,7 +420,7 @@ export default function CreateEvent() {
           {/* Title */}
           <div>
             <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-              Title (10-150 characters)
+              Title (10-150 characters) <span className="text-rose-500">*</span>
             </label>
             <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
               Phrase the title as a clear TRUE/FALSE question.
@@ -428,51 +461,80 @@ export default function CreateEvent() {
     
           {/* Dates */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div>
+            {/* Betting End */}
+            <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                Betting End Time
+                Betting End Time <span className="text-rose-500">*</span>
               </label>
               <input
                 type="datetime-local"
                 value={betEnd}
-                onChange={(e) => setBetEnd(e.target.value)}
+                onChange={(e) => {
+                  setBetEnd(e.target.value);
+                }}
                 disabled={busy}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
                           dark:border-gray-800 dark:bg-gray-950 dark:text-white
                           focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Commit and Reveal times will be auto-filled with default values after you set Betting End.
+              </div>
             </div>
-    
+
+            {/* Commit End */}
             <div>
-              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                Commit End Time
-              </label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
+                  Commit End Time <span className="text-rose-500">*</span>
+                </label>
+              </div>
+
               <input
                 type="datetime-local"
                 value={commitEnd}
-                onChange={(e) => setCommitEnd(e.target.value)}
-                disabled={busy}
+                onChange={(e) => {
+                  setCommitEnd(e.target.value);
+                }}
+                disabled={busy || !betEnd}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                          disabled:opacity-60 disabled:cursor-not-allowed
                           dark:border-gray-800 dark:bg-gray-950 dark:text-white
                           focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Min: {MIN_COMMIT_DAYS} day after betting ends.
+              </div>
             </div>
-    
-            <div className="md:col-span-2">
-              <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                Reveal End Time
-              </label>
+
+            {/* Reveal End */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
+                  Reveal End Time <span className="text-rose-500">*</span>
+                </label>
+              </div>
+
               <input
                 type="datetime-local"
                 value={revealEnd}
-                onChange={(e) => setRevealEnd(e.target.value)}
-                disabled={busy}
+                onChange={(e) => {
+                  setRevealEnd(e.target.value);
+                }}
+                disabled={busy || !commitEnd}
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-white text-gray-900
+                          disabled:opacity-60 disabled:cursor-not-allowed
                           dark:border-gray-800 dark:bg-gray-950 dark:text-white
                           focus:outline-none focus:ring-2 focus:ring-indigo-500"
               />
+
+              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                Min: {MIN_REVEAL_DAYS} day after commit ends.
+              </div>
             </div>
           </div>
+
     
           {/* Submit */}
           <button

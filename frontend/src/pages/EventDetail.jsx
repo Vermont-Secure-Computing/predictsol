@@ -462,7 +462,7 @@ export default function EventDetail() {
     return now < ev.betEndTime.toNumber();
   }
 
-  const UNCLAIMED_SWEEP_DELAY_SECS = 10 * 60;
+  const UNCLAIMED_SWEEP_DELAY_SECS = constants.SWEEP_DELAY_SECS;
 
   const resolvedAt = Number(ev?.resolvedAt?.toNumber?.() ?? ev?.resolvedAt ?? 0);
   const sweepAfterTs = resolvedAt > 0 ? resolvedAt + UNCLAIMED_SWEEP_DELAY_SECS : 0;

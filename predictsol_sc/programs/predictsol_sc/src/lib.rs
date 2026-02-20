@@ -649,10 +649,9 @@ pub mod predictol_sc {
         let true_name = format!("PS-{}-TRUE", prefix);
         let false_name = format!("PS-{}-FALSE", prefix);
 
-        let true_symbol = "TRUE".to_string();
-        let false_symbol = "FALSE".to_string();
+        let true_symbol = true_name.clone();
+        let false_symbol = false_name.clone();
 
-        //let uri = "".to_string(); // blank for now
         let true_uri = TRUE_TOKEN_URI.to_string();
         let false_uri = FALSE_TOKEN_URI.to_string();
 
@@ -698,7 +697,7 @@ pub mod predictol_sc {
             ctx.accounts.creator.key(),
             ctx.accounts.mint_authority.key(), // update authority = same PDA
             true_data,
-            true, // is_mutable
+            false, // not_mutable
         )?;
 
         invoke_signed(
@@ -725,7 +724,7 @@ pub mod predictol_sc {
             ctx.accounts.creator.key(),
             ctx.accounts.mint_authority.key(),
             false_data,
-            true, // is_mutable
+            false, // not_mutable
         )?;
 
         invoke_signed(
@@ -767,6 +766,13 @@ pub mod predictol_sc {
         require!(
             !ctx.accounts.event.resolved,
             PredictError::EventResolved
+        );
+
+        // The Truth question account passed is the SAME one that this event was originally linked to
+        require_keys_eq!(
+            ctx.accounts.event.truth_question,
+            ctx.accounts.truth_network_question.key(),
+            PredictError::TruthQuestionMismatch
         );
 
         // verify truth vault matches the truth question
