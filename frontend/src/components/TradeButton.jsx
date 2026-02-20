@@ -188,7 +188,7 @@ export function TradeButtons({ ev }) {
 
             <iframe
               title="GeckoTerminal TRUE"
-              src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=1d&bg_color=f1f5f9`}
+              src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
               frameBorder={0}
               allow="clipboard-write"
               allowFullScreen={false}
@@ -215,7 +215,7 @@ export function TradeButtons({ ev }) {
 
             <iframe
               title="GeckoTerminal FALSE"
-              src={`https://www.geckoterminal.com/solana/pools/${falsePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=market_cap&resolution=1d&bg_color=f1f5f9`}
+              src={`https://www.geckoterminal.com/solana/pools/${falsePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
               frameBorder={0}
               allow="clipboard-write"
               allowFullScreen={false}

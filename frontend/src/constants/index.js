@@ -23,7 +23,12 @@ export function getConstants() {
   ];
 
   const MIN_BUY_SOL = 0.000001;
-  const SWEEP_DELAY_SECS = 10 * 60//30 * 24 * 60 * 60; // 30 days
+  const SWEEP_DELAY_SECS = 30 * 24 * 60 * 60; // 30 days
+
+  const DEFAULT_COMMIT_DAYS = 3;
+  const DEFAULT_REVEAL_DAYS = 3;
+  const MIN_COMMIT_DAYS = 1;
+  const MIN_REVEAL_DAYS = 1;
 
   return {
     ...base,
@@ -31,6 +36,10 @@ export function getConstants() {
     AVAILABLE_VERSIONS: versionMap,
     CATEGORY_OPTIONS,
     MIN_BUY_SOL,
-    SWEEP_DELAY_SECS
+    SWEEP_DELAY_SECS,
+    DEFAULT_COMMIT_DAYS,
+    DEFAULT_REVEAL_DAYS,
+    MIN_COMMIT_DAYS,
+    MIN_REVEAL_DAYS
   };
 }
