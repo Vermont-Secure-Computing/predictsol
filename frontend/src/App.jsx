@@ -15,75 +15,76 @@ export default function App() {
   return (
     <BrowserRouter>
       <div className="w-full mx-auto p-0 sm:p-4">
-        <header className="w-full border-b border-gray-200 bg-white/80 backdrop-blur px-4 py-3 dark:border-gray-800 dark:bg-gray-950/60">
-        <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <header className="relative isolate z-[9999] w-full border-b border-gray-200 dark:border-gray-800">
+          <div className="pointer-events-none absolute inset-0 bg-white/80 backdrop-blur dark:bg-gray-950/60" />
 
-          {/* LEFT: LOGO + PROGRAM ID */}
-          <div className="flex items-center justify-between gap-3 sm:justify-start">
-            <div className="flex flex-col">
-              <Link
-                to="/"
-                className="flex items-center gap-2 hover:opacity-80 transition-opacity"
-              >
-                <img
-                  src="/images/predict_drawing.png"
-                  alt="Logo"
-                  className="h-9 w-auto dark:invert sm:h-10"
-                />
-                <img
-                  src="/images/predict_text.png"
-                  alt="PredictSol"
-                  className="h-4 w-auto dark:invert sm:h-5"
-                />
-              </Link>
+          <div className="relative px-4 py-3">
+            <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {/* LEFT */}
+              <div className="flex items-center justify-between gap-3 sm:justify-start">
+                <div className="flex flex-col">
+                  <Link
+                    to="/"
+                    className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  >
+                    <img
+                      src="/images/predict_drawing.png"
+                      alt="Logo"
+                      className="h-9 w-auto dark:invert sm:h-10"
+                    />
+                    <img
+                      src="/images/predict_text.png"
+                      alt="PredictSol"
+                      className="h-4 w-auto dark:invert sm:h-5"
+                    />
+                  </Link>
 
-              {/* Program ID link */}
-              <a
-                href={`https://explorer.solana.com/address/${PREDICTSOL_PROGRAM_ID.toBase58()}`}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-1 font-mono text-[11px] text-indigo-600 hover:underline dark:text-indigo-300"
-                title={PREDICTSOL_PROGRAM_ID.toBase58()}
-              >
-                <span className="sm:hidden">
-                  {PREDICTSOL_PROGRAM_ID.toBase58().slice(0, 4)}…
-                  {PREDICTSOL_PROGRAM_ID.toBase58().slice(-4)}
-                </span>
-                <span className="hidden sm:inline break-all">
-                  {PREDICTSOL_PROGRAM_ID.toBase58()}
-                </span>
-              </a>
-            </div>
+                  <a
+                    href={`https://explorer.solana.com/address/${PREDICTSOL_PROGRAM_ID.toBase58()}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 font-mono text-[11px] text-indigo-600 hover:underline dark:text-indigo-300"
+                    title={PREDICTSOL_PROGRAM_ID.toBase58()}
+                  >
+                    <span className="sm:hidden">
+                      {PREDICTSOL_PROGRAM_ID.toBase58().slice(0, 4)}…
+                      {PREDICTSOL_PROGRAM_ID.toBase58().slice(-4)}
+                    </span>
+                    <span className="hidden sm:inline break-all">
+                      {PREDICTSOL_PROGRAM_ID.toBase58()}
+                    </span>
+                  </a>
+                </div>
 
-            {/* Wallet button (mobile only) */}
-            <div className="sm:hidden">
-              <WalletMultiButton />
+                {/* Wallet button (mobile only) */}
+                <div className="sm:hidden">
+                  <WalletMultiButton />
+                </div>
+              </div>
+
+              {/* NAV */}
+              <nav className="flex items-center gap-4 overflow-x-auto whitespace-nowrap rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900/30 sm:border-0 sm:bg-transparent sm:p-0">
+                <Link to="/" className="text-gray-700 hover:underline dark:text-gray-300">
+                  Event List
+                </Link>
+                <Link to="/create" className="text-gray-700 hover:underline dark:text-gray-300">
+                  Create Event
+                </Link>
+                <Link to="/docs" className="text-gray-700 hover:underline dark:text-gray-300">
+                  White Paper
+                </Link>
+                <Link to="/faq" className="text-gray-700 hover:underline dark:text-gray-300">
+                  FAQ
+                </Link>
+              </nav>
+
+              {/* Wallet button (desktop only) */}
+              <div className="hidden sm:block">
+                <WalletMultiButton />
+              </div>
             </div>
           </div>
-
-          {/* NAV (scrollable on mobile) */}
-          <nav className="flex items-center gap-4 overflow-x-auto whitespace-nowrap rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm dark:border-gray-800 dark:bg-gray-900/30 sm:border-0 sm:bg-transparent sm:p-0">
-            <Link to="/" className="text-gray-700 hover:underline dark:text-gray-300">
-              Event List
-            </Link>
-            <Link to="/create" className="text-gray-700 hover:underline dark:text-gray-300">
-              Create Event
-            </Link>
-            <Link to="/docs" className="text-gray-700 hover:underline dark:text-gray-300">
-              White Paper
-            </Link>
-            <Link to="/faq" className="text-gray-700 hover:underline dark:text-gray-300">
-              FAQ
-            </Link>
-          </nav>
-
-          {/* Wallet button (desktop only) */}
-          <div className="hidden sm:block">
-            <WalletMultiButton />
-          </div>
-        </div>
-      </header>
-
+        </header>
 
         <hr style={{ margin: "16px 0" }} />
 
