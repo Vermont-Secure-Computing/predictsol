@@ -50,6 +50,18 @@ const RESULT = {
   FINALIZED_BELOW_THRESHOLD: 4,
 };
 
+function formatBaseToUi(value, decimals = 9) {
+  if (!value) return "0." + "0".repeat(decimals);
+
+  const big = BigInt(value.toString());
+  const divisor = 10n ** BigInt(decimals);
+
+  const whole = big / divisor;
+  const fraction = big % divisor;
+
+  return `${whole}.${fraction.toString().padStart(decimals, "0")}`;
+}
+
 function pctFromBps(bps) {
   const n = typeof bps?.toNumber === "function" ? bps.toNumber() : Number(bps ?? 0);
   return (n / 100).toFixed(2);
@@ -1432,12 +1444,14 @@ export default function EventDetail() {
                   <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
                 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Total collateral</div>
-                    <div className="mt-1 text-gray-900 dark:text-white">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div>
+                    {/* <div className="mt-1 text-gray-900 dark:text-white">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div> */}
+                    <div className="mt-1 text-gray-900 dark:text-white">{formatBaseToUi(ev.totalCollateralLamports)} SOL</div>
                   </div>
                   <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
                 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Issued / side</div>
-                    <div className="mt-1 text-gray-900 dark:text-white">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div>
+                    {/* <div className="mt-1 text-gray-900 dark:text-white">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div> */}
+                    <div className="mt-1 text-gray-900 dark:text-white">{formatBaseToUi(ev.totalIssuedPerSide)} shares</div>
                   </div>
                   <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
                 dark:bg-gray-950/40 dark:border-gray-800">
