@@ -39,6 +39,12 @@ export default function App() {
                     />
                   </Link>
 
+                  {/* Tagline */}
+                  <div className="mt-1 text-[11px] sm:text-xs font-medium text-gray-500 dark:text-gray-400">
+                    World’s first decentralized community prediction tokenizer
+                  </div>
+
+                  {/* Program ID */}
                   <a
                     href={`https://explorer.solana.com/address/${PREDICTSOL_PROGRAM_ID.toBase58()}`}
                     target="_blank"

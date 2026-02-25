@@ -95,7 +95,7 @@ const Footer = () => {
 
         {/* Bottom copyright */}
         <div className="border-t border-gray-200 dark:border-gray-800 text-center text-xs text-gray-500 dark:text-gray-500 py-3">
-          © {new Date().getFullYear()} PredictSol
+          © {new Date().getFullYear()} PredictSol - Tokenized Prediction Market
         </div>
       </footer>
 
