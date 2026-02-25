@@ -27,46 +27,74 @@ export function pickBestSolPool(pairs, { minLiquidityUsd = 0 } = {}) {
 
 import { Connection, PublicKey } from '@solana/web3.js';
 
-// Raydium AMM V4 Program ID
-const RAYDIUM_AMM_PROGRAM_ID = new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
+const RAYDIUM_V4 = new PublicKey('675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8');
+const RAYDIUM_CPMM = new PublicKey('CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHS4K9uP6eh');
 
 export async function getPoolsByMint(mintAddress, rpcEndpoint) {
     const connection = new Connection(rpcEndpoint, 'confirmed');
     const tokenMint = new PublicKey(mintAddress);
-
-    // Filters for Raydium AMM V4 Liquidity State
-    // Pools store baseMint at offset 400 and quoteMint at offset 432
-    const filters = [
-        { dataSize: 752 }, // Typical size for Raydium V4 LiquidityState
-        {
-            memcmp: {
-                offset: 400, // Offset for baseMint
-                bytes: tokenMint.toBase58(),
-            },
-        },
-    ];
-
-    // Search for pools where our token is the baseMint
-    let pools = await connection.getProgramAccounts(RAYDIUM_AMM_PROGRAM_ID, { filters });
-
-    // Search for pools where our token is the quoteMint (e.g., Token/SOL)
-    const quoteFilters = [
-        { dataSize: 752 },
-        {
-            memcmp: {
-                offset: 432, // Offset for quoteMint
-                bytes: tokenMint.toBase58(),
-            },
-        },
-    ];
-    const quotePools = await connection.getProgramAccounts(RAYDIUM_AMM_PROGRAM_ID, { filters: quoteFilters });
     
-    return [...pools, ...quotePools].map(p => ({
+    const v4Filters = (offset) => [
+        { dataSize: 752 },
+        { memcmp: { offset, bytes: tokenMint.toBase58() } }
+    ];
+
+    const cpmmFilters = (offset) => [
+        { dataSize: 637 },
+        { memcmp: { offset, bytes: tokenMint.toBase58() } }
+    ];
+
+    const [v4Base, v4Quote, cpmmA, cpmmB] = await Promise.all([
+        connection.getProgramAccounts(RAYDIUM_V4, { filters: v4Filters(400) }),
+        connection.getProgramAccounts(RAYDIUM_V4, { filters: v4Filters(432) }),
+        connection.getProgramAccounts(RAYDIUM_CPMM, { filters: cpmmFilters(168) }),
+        connection.getProgramAccounts(RAYDIUM_CPMM, { filters: cpmmFilters(200) })
+    ]);
+
+    return [...v4Base, ...v4Quote, ...cpmmA, ...cpmmB].map(p => ({
         poolAddress: p.pubkey.toBase58(),
-        accountData: p.account.data
+        programId: p.account.owner.toBase58()
     }));
 }
 
-// Example usage:
-// getPoolsByMint('4eKfR7D9bvkAV5hQQkrbTVpD3pe8CxzZNMAYSNEUDAgK', 'https://api.mainnet-beta.solana.com')
-//    .then(pools => console.log('Found Pools:', pools));
+
+export async function getPoolsFromGecko(tokenMint) {
+
+    const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`;
+    console.log("getpoolsfromgecko: ", url)
+    
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Error: ${response.status}`);
+        
+        const json = await response.json();
+        console.log("getpoolsfromgecko full response: ", json)
+        
+        return json.data.map(pool => {
+            const a = pool.attributes || {};
+            const dexId = pool.relationships?.dex?.data?.id || "gecko";
+
+            return {
+                poolAddress: a.address,
+                dex: dexId,
+                name: a.name,
+                reserveUsd: Number(a.reserve_in_usd || 0),
+
+                priceNative: a.base_token_price_native_currency
+                ? String(a.base_token_price_native_currency)
+                : null,
+
+                priceUsd: a.base_token_price_usd
+                ? String(a.base_token_price_usd)
+                : (a.token_price_usd ? String(a.token_price_usd) : null),
+
+                poolCreatedAt: a.pool_created_at || null,
+                volumeUsd: a.volume_usd || null,
+            };
+        });
+    } catch (error) {
+        console.error("Failed to fetch pools:", error);
+        return [];
+    }
+}
+
