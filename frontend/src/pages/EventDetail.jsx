@@ -324,7 +324,7 @@ export default function EventDetail() {
     loadUserTokenState(ev);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [walletConnected, wallet.publicKey?.toBase58(), ev?.pk?.toBase58?.()]);
-
+ console.log("ev: ", ev)
 
   const hasAnyToken =
     BigInt(userToken.trueBalBase || "0") > 0n || BigInt(userToken.falseBalBase || "0") > 0n;
@@ -1439,6 +1439,23 @@ export default function EventDetail() {
                   <div className="text-xs text-gray-500">Collateral vault</div>
                   <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.collateralVault.toBase58()}</div>
                 </div>
+
+                {ev.truthQuestion && (
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
+                  dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">Resolution source</div>
+                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">
+                      <a
+                        href={`https://truth.it.com/question/${ev.truthQuestion.toBase58()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-indigo-600 hover:underline dark:text-indigo-300"
+                      >
+                        View in Truth Network
+                      </a>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
