@@ -123,7 +123,7 @@ export function TradeButtons({ ev }) {
       </div>
 
       <div className="flex flex-wrap gap-3 p-1">
-        {truePool && trueMint && (
+        {truePool && trueMint && !eventLocked && (
           <a
             href={raydiumSwapUrl({ outputMint: trueMint, inputMint: "sol" })}
             target="_blank"
@@ -134,7 +134,7 @@ export function TradeButtons({ ev }) {
           </a>
         )}
 
-        {falsePool && falseMint && (
+        {falsePool && falseMint && !eventLocked && (
           <a
             href={raydiumSwapUrl({ outputMint: falseMint, inputMint: "sol" })}
             target="_blank"
