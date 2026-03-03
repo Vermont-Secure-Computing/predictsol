@@ -133,6 +133,45 @@ export default function FAQ() {
           </p>
         </FAQItem>
 
+        <FAQItem question="Ways to earn with PredictSol">
+          <ul className="mt-4 space-y-4 text-gray-700 leading-relaxed">
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">1. Arbitrage Low Prices</span>
+              <p className="ml-0 text-sm md:text-base">
+                If you can buy TRUE and FALSE together for a total price of less that 1 Sol, then you can redeem them on the PredictSol contract for 1 sol, keeping the difference.
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">2. Arbitrage High Prices</span>
+              <p className="ml-0 text-sm md:text-base">
+                If you can sell TRUE and FALSE together for more than 1 Sol, then you can add liquidity on the PredictSol contract at 1 sol for the pair, sell them, and keep the difference.
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">3. Predict an event correctly</span>
+              <p className="ml-0 text-sm md:text-base">
+                Redeem your tokens for full face value in solana.
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">4. Liquidity Provision</span>
+              <p className="ml-0 text-sm md:text-base">
+                Mint TRUE and FALSE by staking solana and then deposit those tokens in a Dex pool to earn money on trading fees. 
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">5. Create an event on PredictSol</span>
+              <p className="ml-0 text-sm md:text-base">
+                Earn one third of a percent of all liquidity added to that event.
+              </p>
+            </li>
+          </ul>
+        </FAQItem>
+
       </div>
     </div>
   );

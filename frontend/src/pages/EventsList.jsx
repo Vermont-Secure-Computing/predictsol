@@ -132,7 +132,7 @@ export default function EventsList() {
   }, [program]);
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90">
+    <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90 p-1">
       {/* Controls */}
       <div className="flex flex-col gap-4 mb-6">
 
