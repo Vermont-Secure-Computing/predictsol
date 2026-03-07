@@ -8,6 +8,7 @@ import Footer from "./components/Footer";
 import SecurityPolicy from "./pages/SecurityPolicy";
 import { getConstants } from "./constants";
 import FAQ from "./pages/FAQ";
+import Documents from "./pages/Documents";
 
 export default function App() {
 
@@ -100,6 +101,7 @@ export default function App() {
           <Route path="/event/:eventPda" element={<EventDetail />} />
           <Route path="/security-policy" element={<SecurityPolicy />} />
           <Route path="/faq" element={<FAQ />} />
+          <Route path="/docs" element={<Documents />} />
         </Routes>
 
         <Footer />
