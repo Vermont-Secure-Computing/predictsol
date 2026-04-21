@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { Link } from "react-router-dom";
+import { FaFire } from "react-icons/fa";
 
 import { getPredictProgram } from "../lib/anchorClient";
 import { getPredictReadonlyProgram } from "../lib/anchorReadOnly";
@@ -18,6 +19,7 @@ export default function EventsList() {
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [sortMode, setSortMode] = useState("new");
+  const [nowTs, setNowTs] = useState(Math.floor(Date.now() / 1000));
 
 
   const program = useMemo(() => {
@@ -86,6 +88,70 @@ export default function EventsList() {
     }
   }
 
+  function formatDaysLeft(seconds) {
+    if (seconds <= 0) return "0d";
+
+    const days = Math.floor(seconds / 86400);
+
+    if (days >= 1) return `${days}d left`;
+
+    return "<1d";
+  }
+
+  function getEventStatus(ev, nowTs) {
+    const betEnd = ev.betEndTime?.toNumber?.() ?? 0;
+    const revealEnd = ev.revealEndTime?.toNumber?.() ?? 0;
+
+    if (ev.resolved) {
+      if (ev.winningOption === 1) return { label: "Winner: TRUE", color: "green" };
+      if (ev.winningOption === 2) return { label: "Winner: FALSE", color: "red" };
+      return { label: "Resolved", color: "gray" };
+    }
+
+    if (nowTs < betEnd) {
+      return {
+        label: `Active · ${formatDaysLeft(betEnd - nowTs)}`,
+        color: "blue",
+      };
+    }
+
+    if (nowTs >= betEnd && nowTs < revealEnd) {
+      return { label: "Waiting for Resolution", color: "yellow" };
+    }
+
+    return { label: "Finalizing...", color: "purple" };
+  }
+
+  function getStatusStyle(color) {
+    switch (color) {
+      case "green":
+        return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-200";
+      case "red":
+        return "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200";
+      case "blue":
+        return "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200";
+      case "yellow":
+        return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-200";
+      case "purple":
+        return "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-200";
+      default:
+        return "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-200";
+    }
+  }
+
+  function isHotEvent(ev, vaultBalances, nowTs) {
+    const betEnd = ev.betEndTime?.toNumber?.() ?? 0;
+    const now = nowTs;
+
+    // still active
+    if (now >= betEnd) return false;
+
+    const vault = (vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9;
+    // Hot badge rule:
+    // - at least 10 SOL
+    return vault >= 10;
+  }
+
   async function loadEvents() {
     if (!program) return;
     setErr("");
@@ -130,6 +196,14 @@ export default function EventsList() {
     if (!program) return;
     loadEvents();
   }, [program]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setNowTs(Math.floor(Date.now() / 1000));
+    }, 1000);
+
+    return () => clearInterval(id);
+  }, []);
 
   return (
     <div className="min-h-screen w-full bg-gray-50 dark:bg-black/90 p-1">
@@ -249,6 +323,8 @@ export default function EventsList() {
         {filteredEvents.map((row) => {
           const ev = row.account;
           const catLabel = getCategoryLabel(ev.category);
+          const status = getEventStatus(ev, nowTs);
+          const isHot = isHotEvent(ev, vaultBalances, nowTs);
 
           return (
             <Link
@@ -262,17 +338,30 @@ export default function EventsList() {
                               transition duration-200">
 
                 {/* Category Badge */}
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`px-3 py-1 rounded-full text-xs font-bold ${getCategoryStyle(
+                        ev.category
+                      )}`}
+                    >
+                      {catLabel}
+                    </span>
+
+                    {isHot && (
+                      <span className="flex items-center gap-1 px-2 py-1 text-xs font-bold rounded-full bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-300 animate-pulse">
+                        <FaFire className="text-orange-500" />
+                        Hot
+                      </span>
+                    )}
+                  </div>
+
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold ${getCategoryStyle(
-                      ev.category
+                    className={`px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${getStatusStyle(
+                      status.color
                     )}`}
                   >
-                    {catLabel}
-                  </span>
-
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {new Date((ev.createdAt?.toNumber?.() ?? 0) * 1000).toLocaleDateString()}
+                    {status.label}
                   </span>
                 </div>
 
@@ -280,6 +369,8 @@ export default function EventsList() {
                 <div className="font-extrabold text-lg text-gray-900 dark:text-white mb-3 line-clamp-2">
                   {ev.title}
                 </div>
+
+
 
                 {/* Info */}
                 <div className="text-xs text-gray-600 dark:text-gray-300 break-all">
