@@ -98,6 +98,11 @@ function pickBestNormalizedPool(pools) {
   return list[0];
 }
 
+function hasUsablePrice(pool) {
+  const native = Number(pool?.priceNative || 0);
+  const usd = Number(pool?.priceUsd || 0);
+  return native > 0 || usd > 0;
+}
 
 async function resolveBestPoolRoundRobin({ mint, rpcUrl = HELIUS_RPC, maxRounds = 2 }) {
   if (!mint) return null;
@@ -122,27 +127,32 @@ async function resolveBestPoolRoundRobin({ mint, rpcUrl = HELIUS_RPC, maxRounds 
     },
   ];
 
-  let lastErr = null;
+  let fallbackPool = null;
 
   for (let round = 0; round < maxRounds; round++) {
     for (let i = 0; i < sources.length; i++) {
       try {
         const res = await sources[i]();
-        if (res?.pairAddress) return res;
+
+        if (res?.pairAddress) {
+          if (!fallbackPool) fallbackPool = res;
+
+          if (hasUsablePrice(res)) {
+            return res;
+          }
+        }
       } catch (e) {
-        lastErr = e;
-        // continue to next source
+        console.warn("Pool source failed:", e);
       }
-      // small delay between sources to avoid rate limits
+
       await sleep(150 + round * 150);
     }
   }
 
-  // If nothing found, return null
-  return null;
+  return fallbackPool;
 }
 
-export function useBestPools({ trueMint, falseMint }) {
+export function useBestPools({ trueMint, falseMint, refreshMs = 15000 }) {
   const [state, setState] = useState({
     loading: true,
     err: "",
@@ -152,10 +162,13 @@ export function useBestPools({ trueMint, falseMint }) {
 
   useEffect(() => {
     let cancelled = false;
+    let timer = null;
 
-    (async () => {
+    const load = async (showLoading = false) => {
       try {
-        setState((s) => ({ ...s, loading: true, err: "" }));
+        if (showLoading) {
+          setState((s) => ({ ...s, loading: true, err: "" }));
+        }
 
         const [truePool, falsePool] = await Promise.all([
           resolveBestPoolRoundRobin({ mint: trueMint, maxRounds: 3 }),
@@ -172,20 +185,26 @@ export function useBestPools({ trueMint, falseMint }) {
         }
       } catch (e) {
         if (!cancelled) {
-          setState({
+          setState((s) => ({
+            ...s,
             loading: false,
             err: e?.message || String(e),
-            truePool: null,
-            falsePool: null,
-          });
+          }));
         }
       }
-    })();
+    };
+
+    load(true);
+
+    timer = setInterval(() => {
+      load(false);
+    }, refreshMs);
 
     return () => {
       cancelled = true;
+      if (timer) clearInterval(timer);
     };
-  }, [trueMint, falseMint]);
+  }, [trueMint, falseMint, refreshMs]);
 
   return state;
 }

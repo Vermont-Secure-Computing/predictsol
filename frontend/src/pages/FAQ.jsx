@@ -37,7 +37,53 @@ export default function FAQ() {
           PredictSol FAQ
         </h1>
 
-        {/* Mintable Question */}
+        <FAQItem question="How can i earn with PredictSol?">
+          <ul className="mt-4 space-y-4 text-gray-700 leading-relaxed">
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">1. Arbitrage Low Prices</span>
+              <p className="ml-0 text-sm md:text-base">
+                If you can buy TRUE and FALSE together for a total price of less that 1 Sol, then you can redeem them on the PredictSol contract for 1 sol, keeping the difference.
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">2. Arbitrage High Prices</span>
+              <p className="ml-0 text-sm md:text-base">
+                If you can sell TRUE and FALSE together for more than 1 Sol, then you can add liquidity on the PredictSol contract at 1 sol for the pair, sell them, and keep the difference.
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">3. Predict an event correctly</span>
+              <p className="ml-0 text-sm md:text-base">
+                Redeem your tokens for full face value in solana.
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">4. Liquidity Provision</span>
+              <p className="ml-0 text-sm md:text-base">
+                Mint TRUE and FALSE by staking solana and then deposit those tokens in a Dex pool to earn money on trading fees. 
+              </p>
+            </li>
+
+            <li className="flex flex-col">
+              <span className="font-semibold text-slate-900">5. Create an event on PredictSol</span>
+              <p className="ml-0 text-sm md:text-base">
+                Earn one third of a percent of all liquidity added to that event.
+              </p>
+            </li>
+          </ul>
+        </FAQItem>
+
+        <FAQItem question="Liquidity on token markets is low, what can I do?">
+          <p>
+            If there aren't enough tokens on the market pools, you add liquidity by depositing solana.  
+            When you add liquidity, you receive both TRUE and FALSE tokens for the event.  You can sell
+            the ones you don't like, or add them to the pool itself as liquidty .
+          </p>
+        </FAQItem>
+
         <FAQItem question="Why does the token say 'This token is mintable'?">
           <p>
             Wallets show “mintable” because the token mint has a Mint Authority.
@@ -47,6 +93,19 @@ export default function FAQ() {
           <p className="mt-3">
             This does <strong>NOT</strong> mean the team can mint tokens freely.
             Minting only happens when a user deposits SOL into the contract.
+          </p>
+        </FAQItem>
+
+        <FAQItem question="How can I create an event?">
+          <p>
+            Create an event by connecting your wallet and inserting the text of your event into the box, and
+            publishing the transaction.  Now your wallet address will now be eligible to receive the 0.3% 
+            reward of all liquidity added to the event.    
+          </p>
+
+          <p className="mt-3">
+            Make sure the text of your event is as clear as possible and is a TRUE or FALSE statement 
+            otherwise the resolution network will have trouble resolving your event correctly. 
           </p>
         </FAQItem>
 
@@ -61,6 +120,26 @@ export default function FAQ() {
 
           <p className="mt-3">
             This function requires a SOL deposit before any tokens are minted.
+          </p>
+        </FAQItem>
+
+        <FAQItem question="But predictsol.com is a website, is this really decentralized?">
+          <p>
+            Good catch. The predictsol.com website is indeed hosted and thus not decentralized.
+            However we can run the front end ourselves using the open source repository:
+            <a
+              href="https://github.com/Vermont-Secure-Computing/predictsol"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="ml-2 text-blue-600 underline break-all"
+            >
+              https://github.com/Vermont-Secure-Computing/predictsol
+            </a>
+          </p>
+
+          <p className="mt-3">
+            This ensures that all aspects of the system are serverless and all on the solana blockchain, 
+            so predictsol is at least as decentralized as solana. 
           </p>
         </FAQItem>
 
@@ -131,45 +210,6 @@ export default function FAQ() {
             After the sweep delay period (e.g. 30 days),
             unclaimed funds may be transferred to the house treasury.
           </p>
-        </FAQItem>
-
-        <FAQItem question="Ways to earn with PredictSol">
-          <ul className="mt-4 space-y-4 text-gray-700 leading-relaxed">
-            <li className="flex flex-col">
-              <span className="font-semibold text-slate-900">1. Arbitrage Low Prices</span>
-              <p className="ml-0 text-sm md:text-base">
-                If you can buy TRUE and FALSE together for a total price of less that 1 Sol, then you can redeem them on the PredictSol contract for 1 sol, keeping the difference.
-              </p>
-            </li>
-
-            <li className="flex flex-col">
-              <span className="font-semibold text-slate-900">2. Arbitrage High Prices</span>
-              <p className="ml-0 text-sm md:text-base">
-                If you can sell TRUE and FALSE together for more than 1 Sol, then you can add liquidity on the PredictSol contract at 1 sol for the pair, sell them, and keep the difference.
-              </p>
-            </li>
-
-            <li className="flex flex-col">
-              <span className="font-semibold text-slate-900">3. Predict an event correctly</span>
-              <p className="ml-0 text-sm md:text-base">
-                Redeem your tokens for full face value in solana.
-              </p>
-            </li>
-
-            <li className="flex flex-col">
-              <span className="font-semibold text-slate-900">4. Liquidity Provision</span>
-              <p className="ml-0 text-sm md:text-base">
-                Mint TRUE and FALSE by staking solana and then deposit those tokens in a Dex pool to earn money on trading fees. 
-              </p>
-            </li>
-
-            <li className="flex flex-col">
-              <span className="font-semibold text-slate-900">5. Create an event on PredictSol</span>
-              <p className="ml-0 text-sm md:text-base">
-                Earn one third of a percent of all liquidity added to that event.
-              </p>
-            </li>
-          </ul>
         </FAQItem>
 
       </div>
