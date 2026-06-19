@@ -1404,45 +1404,77 @@ export default function EventDetail() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
-                    <div className="text-xs text-gray-500">TRUE mint</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.trueMint?.toBase58?.() ?? "-"}</div>
+
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">
+                      True Mint (TRUE token ID for this event)
+                    </div>
+
+                    {ev.trueMint?.toBase58?.() ? (
+                      <a
+                        href={`https://solscan.io/token/${ev.trueMint.toBase58()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 block font-mono text-xs break-all
+                        text-emerald-600 hover:text-emerald-700 hover:underline
+                        dark:text-emerald-400 dark:hover:text-emerald-300"
+                      >
+                        {ev.trueMint.toBase58()}
+                      </a>
+                    ) : (
+                      <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white">
+                        -
+                      </div>
+                    )}
                   </div>
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
-                    <div className="text-xs text-gray-500">FALSE mint</div>
-                    <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.falseMint?.toBase58?.() ?? "-"}</div>
+
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
+                    <div className="text-xs text-gray-500">
+                      False Mint (FALSE token ID for this event)
+                    </div>
+
+                    {ev.falseMint?.toBase58?.() ? (
+                      <a
+                        href={`https://solscan.io/token/${ev.falseMint.toBase58()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 block font-mono text-xs break-all
+                        text-rose-600 hover:text-rose-700 hover:underline
+                        dark:text-rose-400 dark:hover:text-rose-300"
+                      >
+                        {ev.falseMint.toBase58()}
+                      </a>
+                    ) : (
+                      <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white">
+                        -
+                      </div>
+                    )}
                   </div>
+
                 </div>
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Betting end</div>
                     <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.betEndTime)}</div>
                   </div>
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Commit end</div>
                     <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.commitEndTime)}</div>
                   </div>
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Reveal end</div>
                     <div className="mt-1 text-gray-900 dark:text-white">{toDate(ev.revealEndTime)}</div>
                   </div>
                 </div>
 
-                <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                   <div className="text-xs text-gray-500">Collateral vault</div>
                   <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">{ev.collateralVault.toBase58()}</div>
                 </div>
 
                 {ev.truthQuestion && (
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                  dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Resolution source</div>
                     <div className="mt-1 font-mono text-xs text-gray-900 dark:text-white break-all">
                       <a
@@ -1458,20 +1490,17 @@ export default function EventDetail() {
                 )}
 
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Total collateral</div>
                     {/* <div className="mt-1 text-gray-900 dark:text-white">{ev.totalCollateralLamports?.toString?.() ?? "0"} lamports</div> */}
                     <div className="mt-1 text-gray-900 dark:text-white">{formatBaseToUi(ev.totalCollateralLamports)} SOL</div>
                   </div>
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Issued / side</div>
                     {/* <div className="mt-1 text-gray-900 dark:text-white">{ev.totalIssuedPerSide?.toString?.() ?? "0"}</div> */}
                     <div className="mt-1 text-gray-900 dark:text-white">{formatBaseToUi(ev.totalIssuedPerSide)} shares</div>
                   </div>
-                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200
-                dark:bg-gray-950/40 dark:border-gray-800">
+                  <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
                     <div className="text-xs text-gray-500">Winning Threshold</div>
                     <div className="mt-1 text-gray-900 dark:text-white">{pctFromBps(ev.consensusThresholdBps)}%</div>
                   </div>
@@ -1540,7 +1569,7 @@ export default function EventDetail() {
                 dark:border-gray-800 dark:bg-gray-900/60 dark:backdrop-blur">
                 {/* === START: Buy Tokens UI === */}
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                  Add Liquidity (Deposit SOL → Receive TRUE + FALSE)
+                  Create Liquidity (Deposit SOL → Receive TRUE + FALSE)
                 </div>
                 <TxHint>First buy ~3 Transactions • Later ~1 Transaction</TxHint>
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 mb-1">
@@ -1573,7 +1602,7 @@ export default function EventDetail() {
                     `}
 
                   >
-                    {minting ? "Processing..." : "Add Liquidity"}
+                    {minting ? "Processing..." : "Deposit"}
                   </button>
 
                   <div style={{ marginTop: 18, fontSize: 12, opacity: 0.8 }}>

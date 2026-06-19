@@ -5,6 +5,7 @@ import EventsList from "./pages/EventsList";
 import CreateEvent from "./pages/CreateEvent";
 import EventDetail from "./pages/EventDetail";
 import Footer from "./components/Footer";
+import DisclaimerModal from "./components/DisclaimerModa";
 import SecurityPolicy from "./pages/SecurityPolicy";
 import { getConstants } from "./constants";
 import FAQ from "./pages/FAQ";
@@ -94,6 +95,8 @@ export default function App() {
         </header>
 
         <hr style={{ margin: "16px 0" }} />
+
+        <DisclaimerModal />
 
         <Routes>
           <Route path="/" element={<EventsList />} />

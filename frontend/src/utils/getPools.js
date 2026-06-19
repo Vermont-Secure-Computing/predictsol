@@ -1,17 +1,17 @@
 const DEXSCREENER_BASE = "https://api.dexscreener.com";
 
 export async function fetchDexscreenerPairsSolana(mint) {
-    if (!mint) return [];
-    const url = `${DEXSCREENER_BASE}/token-pairs/v1/solana/${mint}`;
+  if (!mint) return [];
 
-    const res = await fetch(url);
+  const url = `${DEXSCREENER_BASE}/token-pairs/v1/solana/${mint}`;
+  const res = await fetch(url);
+  const data = await res.json();
 
-    const json = await res.json();
-    console.log("pools from dexscreener full response: ", json)
+  console.log("pools from dexscreener full response:", data);
 
-    if (!res.ok) throw new Error(`Dexscreener failed (${res.status})`);
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
+  if (!res.ok) throw new Error(`Dexscreener failed (${res.status})`);
+
+  return Array.isArray(data) ? data : [];
 }
 
 const WSOL = "So11111111111111111111111111111111111111112";
@@ -61,6 +61,122 @@ export async function getPoolsByMint(mintAddress, rpcEndpoint) {
 }
 
 
+const RAYDIUM_API = "https://transaction-v1.raydium.io";
+
+export async function getRaydiumQuote({
+    inputMint = WSOL,
+    outputMint,
+    amountLamports = 10_000_000,
+    slippageBps = 100,
+    txVersion = "V0",
+}) {
+    if (!outputMint) return null;
+
+    const url = new URL(`${RAYDIUM_API}/compute/swap-base-in`);
+
+    url.searchParams.set("inputMint", inputMint);
+    url.searchParams.set("outputMint", outputMint);
+    url.searchParams.set("amount", String(amountLamports));
+    url.searchParams.set("slippageBps", String(slippageBps));
+    url.searchParams.set("txVersion", txVersion);
+
+    const res = await fetch(url.toString());
+
+    if (!res.ok) {
+        throw new Error(`Raydium quote failed: ${res.status}`);
+    }
+
+    const json = await res.json();
+
+    console.log(
+        "[raydium quote]",
+        {
+            outputMint,
+            poolIds: json.data.routePlan?.map(
+            r => r.poolId
+            ),
+            outputAmount: json.data.outputAmount,
+            priceImpactPct: json.data.priceImpactPct
+        }
+    );
+
+    if (!json?.success || !json?.data) {
+        throw new Error(json?.msg || "Raydium quote returned no data");
+    }
+
+    return json.data;
+}
+
+export async function getRaydiumBaseOutQuote({
+    inputMint = WSOL,
+    outputMint,
+    outputAmount = 1_000_000_000,
+    slippageBps = 100,
+    txVersion = "V0",
+}) {
+    if (!outputMint) return null;
+
+    const url = new URL(`${RAYDIUM_API}/compute/swap-base-out`);
+
+    url.searchParams.set("inputMint", inputMint);
+    url.searchParams.set("outputMint", outputMint);
+    url.searchParams.set("amount", String(outputAmount));
+    url.searchParams.set("slippageBps", String(slippageBps));
+    url.searchParams.set("txVersion", txVersion);
+
+    const res = await fetch(url.toString());
+    const json = await res.json();
+
+    console.log("[raydium base-out quote]", {
+        outputMint,
+        inputAmount: json?.data?.inputAmount,
+        outputAmount: json?.data?.outputAmount,
+        priceImpactPct: json?.data?.priceImpactPct,
+        poolIds: json?.data?.routePlan?.map((r) => r.poolId),
+    });
+
+    if (!res.ok) throw new Error(`Raydium base-out quote failed: ${res.status}`);
+    if (!json?.success || !json?.data) {
+        throw new Error(json?.msg || "Raydium base-out quote returned no data");
+    }
+
+    return json.data;
+}
+
+// Add this to getPools.js
+export async function getRaydiumPrice({
+    inputMint = WSOL,
+    outputMint,
+    amountLamports = 1_000_000_000, // 1 SOL for better precision
+}) {
+    if (!outputMint) return null;
+
+    try {
+        const quote = await getRaydiumQuote({
+            inputMint,
+            outputMint,
+            amountLamports,
+        });
+
+        if (!quote) return null;
+
+        // Calculate price: outputAmount / inputAmount (in SOL)
+        const priceInSol = Number(quote.outputAmount) / Number(amountLamports);
+        
+        return {
+            priceInSol,
+            outputAmount: quote.outputAmount,
+            inputAmount: amountLamports,
+            poolIds: quote.routePlan?.map(r => r.poolId) || [],
+            priceImpactPct: quote.priceImpactPct,
+        };
+    } catch (error) {
+        console.error("Failed to get Raydium price:", error);
+        return null;
+    }
+}
+
+
 export async function getPoolsFromGecko(tokenMint) {
 
     const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`;
@@ -100,4 +216,3 @@ export async function getPoolsFromGecko(tokenMint) {
         return [];
     }
 }
-
