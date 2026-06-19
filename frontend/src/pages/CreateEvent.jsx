@@ -52,6 +52,7 @@ export default function CreateEvent() {
   const [commitEnd, setCommitEnd] = useState("");
   const [revealEnd, setRevealEnd] = useState("");
   const [truthQuestion, setTruthQuestion] = useState("");
+  const [showCreateInstructions, setShowCreateInstructions] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
@@ -406,7 +407,13 @@ export default function CreateEvent() {
             Create Event
           </h2>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
-            Create a new prediction market event on PredictSol.
+            Create a new prediction market event on PredictSol. Please read{" "}
+            <span
+              onClick={() => setShowCreateInstructions(true)}
+              className="cursor-pointer font-semibold text-indigo-600 hover:text-indigo-500 hover:underline dark:text-indigo-300"
+            >
+              Instructions
+            </span>
           </p>
         </div>
     
@@ -469,7 +476,7 @@ export default function CreateEvent() {
             {/* Betting End */}
             <div className="md:col-span-2">
               <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200 mb-2">
-                Betting End Time <span className="text-rose-500">*</span>
+                Event Close <span className="text-rose-500">*</span>
               </label>
               <input
                 type="datetime-local"
@@ -491,7 +498,7 @@ export default function CreateEvent() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  Commit End Time <span className="text-rose-500">*</span>
+                  Oracle Commit End Time <span className="text-rose-500">*</span>
                 </label>
               </div>
 
@@ -509,7 +516,7 @@ export default function CreateEvent() {
               />
 
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Min: {MIN_COMMIT_DAYS} day after betting ends.
+                Min: {MIN_COMMIT_DAYS} day after event close.
               </div>
             </div>
 
@@ -517,7 +524,7 @@ export default function CreateEvent() {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
-                  Reveal End Time <span className="text-rose-500">*</span>
+                  Oracle Reveal End Time <span className="text-rose-500">*</span>
                 </label>
               </div>
 
@@ -553,7 +560,7 @@ export default function CreateEvent() {
           </button>
           <TxHint>First create ~4 transactions • Later ~3 transactions</TxHint>
           <div className="text-[11px] text-gray-500 dark:text-gray-400">
-            First time only: initializes your question counter account.
+            First time only: initializes your question creator account.
           </div>
 
     
@@ -570,6 +577,88 @@ export default function CreateEvent() {
             </div>
           )}
         </form>
+
+        {/**
+         *  Modal for Create event instructions
+         */}
+        {showCreateInstructions && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4">
+            <div className="w-full max-w-3xl rounded-2xl border border-gray-200 bg-white p-5 shadow-xl dark:border-gray-800 dark:bg-gray-950">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                    Create Event Instructions
+                  </h3>
+
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Please read this before creating an event.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCreateInstructions(false)}
+                  className="rounded-lg px-3 py-1 text-sm text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:hover:bg-gray-900 dark:hover:text-white"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mt-4 max-h-[70vh] overflow-y-auto space-y-3 text-sm leading-relaxed text-gray-700 dark:text-gray-300">
+                <p className="text-justify">
+                  Creating an event entitles event creator to 0.33% of all deposited solana.  
+                </p>
+
+                <p className="text-justify">
+                  Please read and understand how the predictsol contract works before interacting with it! 
+                </p>
+
+                <p className="text-justify">
+                  There is no person or team who can adjust your event in any way or make any refunds, everything is final on the smart contract. 
+                </p>
+
+                <p className="text-justify">
+                  Creating an event requires a clear description of the event which is either true or false upon completion, and requires selecting a 
+                  "close date" after which the event is decided.  
+                </p>
+
+                <p className="text-justify">
+                  The oracle voters will decide on what happened and which token (true or false) is redeemable. Oracle voters "commit" to a resolution 
+                  vote before the commit end date.  Then they "reveal" their votes until the final reveal end date.  Give the oracle enough time to resolve your 
+                  event!  
+                </p>
+
+                <div className="rounded-2xl border border-indigo-200 bg-indigo-50/50 dark:border-indigo-900/50 dark:bg-indigo-950/20 p-3 
+                dark:border-gray-800 dark:bg-gray-900/50">
+                  <div className="font-semibold text-gray-900 dark:text-white">
+                    To submit your event requires submitting at most four transactions: 
+                  </div>
+
+                  <ol className="mt-2 list-decimal space-y-1 pl-5">
+                    <li>Create account of question creator (if this is the first coin created with your solana address) (cost ~ 0.001)</li>
+                    <li>Create and fund oracle for the event (Truth it network) (cost ~ 0.1)</li>
+                    <li>Token factory mints true token (cost ~ 0.001)</li>
+                    <li>Token factory mints false token (cost ~ 0.001) </li>
+                  </ol>
+                </div>
+
+                <p className="font-medium text-amber-700 dark:text-amber-300">
+                  Please make sure you complete all these popup transactions or event creation may fail.
+                </p>
+              </div>
+
+              <div className="mt-5 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateInstructions(false)}
+                  className="rounded-xl bg-indigo-600 px-5 py-2 text-sm font-semibold text-white hover:bg-indigo-500"
+                >
+                  I Understand
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );  

@@ -389,7 +389,7 @@ export default function EventsList() {
                   title={`${((vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9).toFixed(6)} SOL`}
                   className="text-xs font-bold text-indigo-600 dark:text-indigo-300 mt-2"
                 >
-                  {formatCompactNumber((vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9)} SOL
+                  Vault Balance: {formatCompactNumber((vaultBalances[ev.collateralVault.toBase58()] ?? 0) / 1e9)} SOL
                 </div>
 
               </div>

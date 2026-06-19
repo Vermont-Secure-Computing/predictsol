@@ -9,6 +9,10 @@ function raydiumSwapUrl({ outputMint, inputMint = "sol" }) {
   return `https://raydium.io/swap/?outputMint=${outputMint}&inputMint=${inputMint}`;
 }
 
+function jupiterSwapUrl(outputMint) {
+  return `https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&buy=${outputMint}`;
+}
+
 export function TradeButtons({ ev }) {
 
   console.log("TRADE BUTTONS")
@@ -16,6 +20,8 @@ export function TradeButtons({ ev }) {
   const falseMint = ev?.falseMint?.toBase58?.();
 
   const { loading, err, truePool, falsePool } = useBestPools({ trueMint, falseMint });
+  //const { loading, err, truePool, falsePool, truePrice, falsePrice, truePriceUsd, falsePriceUsd, } = useBestPools({ trueMint, falseMint });
+  //const { truePrice, falsePrice, truePriceUsd, falsePriceUsd } = useBestPools({trueMint, falseMint });
 
   const show = !!truePool || !!falsePool;
   const dexName = truePool?.dexId || falsePool?.dexId || "DEX";
@@ -39,7 +45,7 @@ export function TradeButtons({ ev }) {
   return (
     <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-semibold">Trade on {dexName}</div>
+        <div className="text-sm font-semibold">External Markets</div>
         {loading ? (
           <div className="text-xs opacity-70">Checking pools…</div>
         ) : err ? (
@@ -58,6 +64,10 @@ export function TradeButtons({ ev }) {
                   FALSE {Number(falsePool.priceNative).toFixed(4)} SOL
                 </span>
               )}
+              {/* <p>
+                True Token Price: {truePrice ? `${truePrice.toFixed(8)} SOL` : 'Loading...'}
+                False Token Price: {falsePrice ? `${falsePrice.toFixed(8)} SOL` : 'Loading...'}
+              </p> */}
             </div>
 
             <div className="text-xs opacity-70">
@@ -122,7 +132,7 @@ export function TradeButtons({ ev }) {
         )}
       </div>
 
-      <div className="flex flex-wrap gap-3 p-1">
+      {/* <div className="flex flex-wrap gap-3 p-1">
         {truePool && trueMint && !eventLocked && (
           <a
             href={raydiumSwapUrl({ outputMint: trueMint, inputMint: "sol" })}
@@ -130,7 +140,7 @@ export function TradeButtons({ ev }) {
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-6 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white hover:text-white font-bold rounded-lg transition-all active:scale-95 shadow-lg shadow-emerald-500/20 uppercase tracking-wider text-sm"
           >
-            <span className="opacity-70 text-xs">BUY TRUE</span>
+            <span className="opacity-70 text-xs">BUY / SELL TRUE</span>
           </a>
         )}
 
@@ -141,10 +151,128 @@ export function TradeButtons({ ev }) {
             rel="noopener noreferrer"
             className="flex items-center gap-2 px-6 py-2.5 bg-rose-500 hover:bg-rose-600 text-white hover:text-white font-bold rounded-lg transition-all active:scale-95 shadow-lg shadow-rose-500/20 uppercase tracking-wider text-sm"
           >
-            <span className="opacity-70 text-xs">BUY FALSE</span>
+            <span className="opacity-70 text-xs">BUY / SELL FALSE</span>
           </a>
         )}
+      </div> */}
+
+      <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+
+        {truePool && trueMint && !eventLocked && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="font-bold text-emerald-700 dark:text-emerald-300">
+                  TRUE Market
+                </div>
+              </div>
+
+              <div className="text-[11px] px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+                TRADE
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={jupiterSwapUrl(trueMint)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-100 dark:bg-transparent dark:border-emerald-800 dark:hover:bg-emerald-900/30"
+              >
+                Jupiter
+              </a>
+
+              <a
+                href={raydiumSwapUrl({ outputMint: trueMint })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-100 dark:bg-transparent dark:border-emerald-800 dark:hover:bg-emerald-900/30"
+              >
+                Raydium
+              </a>
+            </div>
+          </div>
+        )}
+
+        {falsePool && falseMint && !eventLocked && (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900/40 dark:bg-rose-950/20">
+            <div className="mb-3 flex items-center justify-between">
+              <div>
+                <div className="font-bold text-rose-700 dark:text-rose-300">
+                  FALSE Market
+                </div>
+              </div>
+
+              <div className="text-[11px] px-2 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+                TRADE
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <a
+                href={jupiterSwapUrl(falseMint)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-rose-100 dark:bg-transparent dark:border-rose-800 dark:hover:bg-rose-900/30"
+              >
+                Jupiter
+              </a>
+
+              <a
+                href={raydiumSwapUrl({ outputMint: falseMint })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-rose-100 dark:bg-transparent dark:border-rose-800 dark:hover:bg-rose-900/30"
+              >
+                Raydium
+              </a>
+            </div>
+          </div>
+        )}
+
       </div>
+      
+      {/**
+       * Liquidity block
+       */}
+      {(trueMint || falseMint) && (
+        <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/30">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+                Add Liquidity
+              </div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                Open Raydium liquidity pools.
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {trueMint && (
+              <a
+                href={`https://raydium.io/liquidity-pools/?token=${trueMint}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-900/50 dark:bg-gray-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+              >
+                Raydium's True Pools
+              </a>
+            )}
+
+            {falseMint && (
+              <a
+                href={`https://raydium.io/liquidity-pools/?token=${falseMint}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/50 dark:bg-gray-950/40 dark:text-rose-300 dark:hover:bg-rose-950/30"
+              >
+                Raydium's False Pools
+              </a>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-3 text-xs">
         {truePool?.url && (
@@ -188,8 +316,8 @@ export function TradeButtons({ ev }) {
 
             <iframe
               title="GeckoTerminal TRUE"
-              //src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
-              src="https://raydium.io/swap/?inputMint=sol&outputMint=Ebnuk1hkNh3MwSxo2G9ByrnxzLYSmzDXHYSC2LSemahN"
+              src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
+              //src="https://raydium.io/swap/?inputMint=sol&outputMint=Ebnuk1hkNh3MwSxo2G9ByrnxzLYSmzDXHYSC2LSemahN"
               frameBorder={0}
               allow="clipboard-write"
               allowFullScreen={false}
