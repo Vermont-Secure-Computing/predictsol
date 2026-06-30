@@ -81,28 +81,20 @@ export async function getRaydiumQuote({
     url.searchParams.set("txVersion", txVersion);
 
     const res = await fetch(url.toString());
-
-    if (!res.ok) {
-        throw new Error(`Raydium quote failed: ${res.status}`);
-    }
-
     const json = await res.json();
 
-    console.log(
-        "[raydium quote]",
-        {
-            outputMint,
-            poolIds: json.data.routePlan?.map(
-            r => r.poolId
-            ),
-            outputAmount: json.data.outputAmount,
-            priceImpactPct: json.data.priceImpactPct
-        }
-    );
-
-    if (!json?.success || !json?.data) {
-        throw new Error(json?.msg || "Raydium quote returned no data");
+    if (!res.ok || !json?.success || !json?.data) {
+        throw new Error(json?.msg || `Raydium quote failed: ${res.status}`);
     }
+
+    console.log("[raydium quote]", {
+        outputMint,
+        poolIds: json.data.routePlan?.map(
+        r => r.poolId
+        ),
+        outputAmount: json.data.outputAmount,
+        priceImpactPct: json.data.priceImpactPct
+    });
 
     return json.data;
 }
@@ -127,6 +119,10 @@ export async function getRaydiumBaseOutQuote({
     const res = await fetch(url.toString());
     const json = await res.json();
 
+    if (!res.ok || !json?.success || !json?.data) {
+        throw new Error(json?.msg || `Raydium base-out quote failed: ${res.status}`);
+    }
+
     console.log("[raydium base-out quote]", {
         outputMint,
         inputAmount: json?.data?.inputAmount,
@@ -134,11 +130,6 @@ export async function getRaydiumBaseOutQuote({
         priceImpactPct: json?.data?.priceImpactPct,
         poolIds: json?.data?.routePlan?.map((r) => r.poolId),
     });
-
-    if (!res.ok) throw new Error(`Raydium base-out quote failed: ${res.status}`);
-    if (!json?.success || !json?.data) {
-        throw new Error(json?.msg || "Raydium base-out quote returned no data");
-    }
 
     return json.data;
 }
@@ -178,41 +169,38 @@ export async function getRaydiumPrice({
 
 
 export async function getPoolsFromGecko(tokenMint) {
+  const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`;
 
-    const url = `https://api.geckoterminal.com/api/v2/networks/solana/tokens/${tokenMint}/pools`;
-    console.log("getpoolsfromgecko: ", url)
-    
-    try {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error(`Error: ${response.status}`);
-        
-        const json = await response.json();
-        console.log("getpoolsfromgecko full response: ", json)
-        
-        return json.data.map(pool => {
-            const a = pool.attributes || {};
-            const dexId = pool.relationships?.dex?.data?.id || "gecko";
+  const response = await fetch(url);
+  if (response.status === 404) {
+    console.warn("Gecko pools unavailable:");
+    return [];
+  }
 
-            return {
-                poolAddress: a.address,
-                dex: dexId,
-                name: a.name,
-                reserveUsd: Number(a.reserve_in_usd || 0),
+  if (!response.ok) {
+    console.warn(`Gecko pools failed: ${response.status}`);
+    return [];
+  }
 
-                priceNative: a.base_token_price_native_currency
-                ? String(a.base_token_price_native_currency)
-                : null,
+  const json = await response.json();
 
-                priceUsd: a.base_token_price_usd
-                ? String(a.base_token_price_usd)
-                : (a.token_price_usd ? String(a.token_price_usd) : null),
+  return (json.data || []).map(pool => {
+    const a = pool.attributes || {};
+    const dexId = pool.relationships?.dex?.data?.id || "gecko";
 
-                poolCreatedAt: a.pool_created_at || null,
-                volumeUsd: a.volume_usd || null,
-            };
-        });
-    } catch (error) {
-        console.error("Failed to fetch pools:", error);
-        return [];
-    }
+    return {
+      poolAddress: a.address,
+      dex: dexId,
+      name: a.name,
+      reserveUsd: Number(a.reserve_in_usd || 0),
+      priceNative: a.base_token_price_native_currency
+        ? String(a.base_token_price_native_currency)
+        : null,
+      priceUsd: a.base_token_price_usd
+        ? String(a.base_token_price_usd)
+        : (a.token_price_usd ? String(a.token_price_usd) : null),
+      poolCreatedAt: a.pool_created_at || null,
+      volumeUsd: a.volume_usd || null,
+    };
+  });
 }
