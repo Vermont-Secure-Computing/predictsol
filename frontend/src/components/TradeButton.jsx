@@ -45,7 +45,9 @@ export function TradeButtons({ ev }) {
   return (
     <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
       <div className="mb-2 flex items-center justify-between">
-        <div className="text-sm font-semibold">External Markets</div>
+        <div className="text-sm font-semibold">
+          Current Market Prediction:
+        </div>
         {loading ? (
           <div className="text-xs opacity-70">Checking pools…</div>
         ) : err ? (
@@ -56,12 +58,12 @@ export function TradeButtons({ ev }) {
             <div className="flex gap-3 text-xs font-medium">
               {truePool?.priceNative && (
                 <span className="text-emerald-600 dark:text-emerald-400">
-                  TRUE {Number(truePool.priceNative).toFixed(4)} SOL
+                  TRUE {Number(truePool.priceNative).toFixed(4) * 100} %
                 </span>
               )}
               {falsePool?.priceNative && (
                 <span className="text-rose-600 dark:text-rose-400">
-                  FALSE {Number(falsePool.priceNative).toFixed(4)} SOL
+                  FALSE {Number(falsePool.priceNative).toFixed(4) * 100} %
                 </span>
               )}
               {/* <p>
@@ -163,7 +165,7 @@ export function TradeButtons({ ev }) {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <div className="font-bold text-emerald-700 dark:text-emerald-300">
-                  TRUE Market
+                  TRUE Market Buy / Sell
                 </div>
               </div>
 
@@ -199,7 +201,7 @@ export function TradeButtons({ ev }) {
             <div className="mb-3 flex items-center justify-between">
               <div>
                 <div className="font-bold text-rose-700 dark:text-rose-300">
-                  FALSE Market
+                  FALSE Market Buy / Sell
                 </div>
               </div>
 

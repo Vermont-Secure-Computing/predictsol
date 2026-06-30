@@ -9,6 +9,7 @@ import {
   getAssociatedTokenAddressSync,
   createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
+import { FaRegCopy, FaCheck } from "react-icons/fa";
 
 import {
   findCollateralVaultPda,
@@ -226,6 +227,17 @@ export default function EventDetail() {
   // state for sweep unclaimed SOL confirmation modal
   const [showSweepConfirm, setShowSweepConfirm] = useState(false);
   const [sweeping, setSweeping] = useState(false);
+
+  // copy button in mints
+  const [copied, setCopied] = useState("");
+  const copyToClipboard = async (text) => {
+    await navigator.clipboard.writeText(text);
+    setCopied(text);
+
+    setTimeout(() => {
+      setCopied("");
+    }, 1500);
+  };
 
 
   // prevents double submit even before setState updates
@@ -1406,8 +1418,25 @@ export default function EventDetail() {
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
 
                   <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
-                    <div className="text-xs text-gray-500">
-                      True Mint (TRUE token ID for this event)
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">
+                        True Mint (TRUE token ID for this event)
+                      </div>
+
+                      {ev.trueMint?.toBase58?.() && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(ev.trueMint.toBase58())}
+                          className="text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400"
+                          title="Copy TRUE mint"
+                        >
+                          {copied === ev.trueMint.toBase58() ? (
+                            <FaCheck size={13} />
+                          ) : (
+                            <FaRegCopy size={13} />
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {ev.trueMint?.toBase58?.() ? (
@@ -1429,8 +1458,25 @@ export default function EventDetail() {
                   </div>
 
                   <div className="rounded-xl bg-gray-50 p-3 border border-gray-200 dark:bg-gray-950/40 dark:border-gray-800">
-                    <div className="text-xs text-gray-500">
-                      False Mint (FALSE token ID for this event)
+                    <div className="flex items-center justify-between">
+                      <div className="text-xs text-gray-500">
+                        False Mint (FALSE token ID for this event)
+                      </div>
+
+                      {ev.falseMint?.toBase58?.() && (
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(ev.falseMint.toBase58())}
+                          className="text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400"
+                          title="Copy TRUE mint"
+                        >
+                          {copied === ev.falseMint.toBase58() ? (
+                            <FaCheck size={13} />
+                          ) : (
+                            <FaRegCopy size={13} />
+                          )}
+                        </button>
+                      )}
                     </div>
 
                     {ev.falseMint?.toBase58?.() ? (
@@ -1438,9 +1484,9 @@ export default function EventDetail() {
                         href={`https://solscan.io/token/${ev.falseMint.toBase58()}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-1 block font-mono text-xs break-all
-                        text-rose-600 hover:text-rose-700 hover:underline
-                        dark:text-rose-400 dark:hover:text-rose-300"
+                        className="flex-1 font-mono text-xs break-all
+                          text-rose-600 hover:text-rose-700 hover:underline
+                          dark:text-rose-400 dark:hover:text-rose-300"
                       >
                         {ev.falseMint.toBase58()}
                       </a>
