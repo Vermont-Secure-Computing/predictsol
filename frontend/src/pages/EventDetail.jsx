@@ -7,7 +7,7 @@ import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddressSync,
-  createAssociatedTokenAccountInstruction,
+  createAssociatedTokenAccountIdempotentInstruction,
 } from "@solana/spl-token";
 import { FaRegCopy, FaCheck } from "react-icons/fa";
 
@@ -595,11 +595,13 @@ export default function EventDetail() {
   console.log("totalIssuedPerSide: ", BigInt(ev?.totalIssuedPerSide?.toString?.() || "0"))
   console.log("totalIssuedPerSide: ", BigInt(ev?.totalIssuedPerSide?.toString?.() || "0") === 0n)
 
+  async function buildAtaInstruction({
+    mint,
+    owner,
+    payer = owner,
+  }) {
+    if (!walletConnected) { throw new Error("Connect wallet to create token accounts."); }
 
-
-
-  async function ensureAta(mint, owner) {
-    if (!walletConnected) throw new Error("Connect wallet to ceate ATA.")
     const ata = getAssociatedTokenAddressSync(
       mint,
       owner,
@@ -608,24 +610,30 @@ export default function EventDetail() {
       ASSOCIATED_TOKEN_PROGRAM_ID
     );
 
-    const info = await program.provider.connection.getAccountInfo(ata);
-    if (info) return ata;
+    const accountInfo = await program.provider.connection.getAccountInfo(ata);
 
-    console.log("[ensureAta] creating ATA:", ata.toBase58());
+    if (accountInfo) {
+      return {
+        ata,
+        instruction: null,
+        exists: true,
+      };
+    }
 
-    const ix = createAssociatedTokenAccountInstruction(
-      owner, // payer
-      ata, // ata
-      owner, // owner
-      mint,
-      TOKEN_PROGRAM_ID,
-      ASSOCIATED_TOKEN_PROGRAM_ID
-    );
+    const instruction = createAssociatedTokenAccountIdempotentInstruction(
+        payer,
+        ata,
+        owner,
+        mint,
+        TOKEN_PROGRAM_ID,
+        ASSOCIATED_TOKEN_PROGRAM_ID
+      );
 
-    const tx = new Transaction().add(ix);
-    const sig = await wallet.sendTransaction(tx, program.provider.connection);
-    await program.provider.connection.confirmTransaction(sig, "confirmed");
-    return ata;
+    return {
+      ata,
+      instruction,
+      exists: false,
+    };
   }
 
   function asPubkey(x) {
@@ -670,15 +678,21 @@ export default function EventDetail() {
   }
 
   async function buyTokens(solAmountStr) {
-    if (!walletConnected) return setMintErr("Connect wallet to buy.");
+    if (!walletConnected) {
+      setMintErr("Connect wallet to buy.");
+      return;
+    }
+
     if (!program) return;
     if (buyLockRef.current) return;
+
     buyLockRef.current = true;
 
     setMintErr("");
     setMintSig("");
 
     const amountNum = Number(solAmountStr);
+
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
       buyLockRef.current = false;
       setMintErr("Enter a valid SOL amount > 0");
@@ -687,36 +701,47 @@ export default function EventDetail() {
 
     if (amountNum < constants.MIN_BUY_SOL) {
       buyLockRef.current = false;
-      setMintErr(`Minimum buy amount is ${constants.MIN_BUY_SOL} SOL`);
+      setMintErr(
+        `Minimum buy amount is ${constants.MIN_BUY_SOL} SOL`
+      );
       return;
     }
 
-    // only allow buys during betting period
     if (!isBettingActive(ev)) {
       buyLockRef.current = false;
-      setMintErr("Betting period ended. Buying is disabled.");
+      setMintErr(
+        "Betting period ended. Buying is disabled."
+      );
       return;
     }
 
     if (!ev?.truthQuestion) {
       buyLockRef.current = false;
-      setMintErr("This event is not linked to a Truth Network question.");
+      setMintErr(
+        "This event is not linked to a Truth Network question."
+      );
       return;
     }
 
     if (!truthQ) {
       buyLockRef.current = false;
-      setMintErr("Truth Network question not loaded yet. Click Refresh and try again.");
+      setMintErr(
+        "Truth Network question not loaded yet. Click Refresh and try again."
+      );
       return;
     }
 
     const truthVaultPk = asPubkey(
-      truthQ?.vaultAddress ?? truthQ?.vault_address ?? truthQ?.vault
+      truthQ?.vaultAddress ??
+        truthQ?.vault_address ??
+        truthQ?.vault
     );
 
     if (!truthVaultPk) {
       buyLockRef.current = false;
-      setMintErr("Truth vault address missing/invalid from Truth Network question.");
+      setMintErr(
+        "Truth vault address missing or invalid."
+      );
       return;
     }
 
@@ -727,45 +752,118 @@ export default function EventDetail() {
       const user = wallet.publicKey;
 
       const [collateralVault] = await findCollateralVaultPda(eventPk);
+
       const [mintAuthority] = findMintAuthorityPda(eventPk);
+
       const [trueMint] = findTrueMintPda(eventPk);
+
       const [falseMint] = findFalseMintPda(eventPk);
 
-      // ensure ATAs exist (may cost extra tx only if they don't exist)
-      const userTrueAta = await ensureAta(trueMint, user);
-      const userFalseAta = await ensureAta(falseMint, user);
+      /*
+      * Prepare both user token accounts.
+      *
+      * These calls only check account state and build
+      * instructions. They do not send transactions.
+      */
+      const [trueAtaResult, falseAtaResult] =
+        await Promise.all([
+          buildAtaInstruction({
+            mint: trueMint,
+            owner: user,
+            payer: user,
+          }),
+          buildAtaInstruction({
+            mint: falseMint,
+            owner: user,
+            payer: user,
+          }),
+        ]);
 
-      const lamports = new BN(Math.floor(amountNum * 1e9));
+      const userTrueAta = trueAtaResult.ata;
+      const userFalseAta = falseAtaResult.ata;
 
-      const tx = await program.methods
-        .buyPositionsWithFee(lamports)
-        .accounts({
-          user,
-          event: eventPk,
-          collateralVault,
-          mintAuthority,
-          trueMint,
-          falseMint,
-          userTrueAta,
-          userFalseAta,
-          truthNetworkQuestion: ev.truthQuestion, 
-          truthNetworkVault: truthVaultPk,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .transaction();
+      const lamports = new BN( Math.floor(amountNum * 1_000_000_000) );
 
-      const sig = await sendAndConfirm(tx, "buyPositionsWithFee");
+      /*
+      * Build the PredictSol buy instruction.
+      *
+      * .instruction() prepares it without sending.
+      */
+      const buyInstruction =
+        await program.methods
+          .buyPositionsWithFee(lamports)
+          .accounts({
+            user,
+            event: eventPk,
+            collateralVault,
+            mintAuthority,
+            trueMint,
+            falseMint,
+            userTrueAta,
+            userFalseAta,
+            truthNetworkQuestion: ev.truthQuestion,
+            truthNetworkVault: truthVaultPk,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+
+      const tx = new Transaction();
+
+      /*
+      * Add missing ATA instructions first.
+      *
+      * buyPositionsWithFee expects both ATAs to exist
+      * when its instruction executes.
+      */
+      if (trueAtaResult.instruction) { tx.add(trueAtaResult.instruction); }
+
+      if (falseAtaResult.instruction) { tx.add(falseAtaResult.instruction); }
+
+      /*
+      * The buy instruction must come after ATA creation.
+      */
+      tx.add(buyInstruction);
+
+      console.log("[buy] transaction prepared:", {
+        event: eventPk.toBase58(),
+        amountSol: amountNum,
+        amountLamports: lamports.toString(),
+
+        trueMint: trueMint.toBase58(),
+        falseMint: falseMint.toBase58(),
+
+        userTrueAta: userTrueAta.toBase58(),
+        userFalseAta: userFalseAta.toBase58(),
+
+        createTrueAta: !!trueAtaResult.instruction,
+        createFalseAta: !!falseAtaResult.instruction,
+
+        instructionCount: tx.instructions.length,
+      });
+
+      const sig = await sendAndConfirm(
+        tx,
+        "buyPositionsWithFee"
+      );
 
       setMintSig(sig);
+
       await load();
     } catch (e) {
       console.error("[buy] failed:", e);
+
       if (typeof e?.getLogs === "function") {
         try {
-          console.log("[buy] logs:", await e.getLogs());
-        } catch {}
+          console.log(
+            "[buy] logs:",
+            await e.getLogs()
+          );
+        } catch {
+          // Logs were not available.
+        }
       }
+
       setMintErr(e?.message || String(e));
     } finally {
       setMinting(false);
@@ -775,91 +873,182 @@ export default function EventDetail() {
 
 
   async function redeemPairWhileActive(redeemAmountStr) {
+    if (!walletConnected) {
+      setRedeemErr("Connect wallet to redeem.");
+      return;
+    }
 
-    if (!walletConnected) return setRedeemErr("Connect wallet to redeem.");
     if (!program) return;
     if (redeemLockRef.current) return;
+
     redeemLockRef.current = true;
 
     setRedeemErr("");
     setRedeemSig("");
 
-    // only show/allow redeem while betting active
     if (!isBettingActive(ev)) {
       redeemLockRef.current = false;
-      setRedeemErr("Betting period ended. Pair-redeem is disabled.");
+      setRedeemErr(
+        "Betting period ended. Pair redemption is disabled."
+      );
       return;
     }
 
     const amount = toBaseUnits(redeemAmountStr);
+
     if (!amount) {
       redeemLockRef.current = false;
-      setRedeemErr("Enter a valid amount > 0 (example: 0.1)");
+      setRedeemErr(
+        "Enter a valid amount greater than 0. Example: 0.1"
+      );
       return;
     }
+
     setRedeeming(true);
 
     try {
+      const connection = program.provider.connection;
       const eventPk = new PublicKey(eventPda);
       const user = wallet.publicKey;
 
       const [collateralVault] = await findCollateralVaultPda(eventPk);
+
       const [trueMint] = findTrueMintPda(eventPk);
+
       const [falseMint] = findFalseMintPda(eventPk);
 
-      if (!userToken.trueExists || !userToken.falseExists) {
-        throw new Error("Missing TRUE/FALSE ATA. You probably don't hold both tokens for this event.");
-      }
-      const userTrueAta = userToken.trueAta;
-      const userFalseAta = userToken.falseAta;
-
-      if (BigInt(amount.toString()) > BigInt(userToken.trueBalBase || "0")) {
-        throw new Error("Amount > TRUE balance.");
-      }
-      if (BigInt(amount.toString()) > BigInt(userToken.falseBalBase || "0")) {
-        throw new Error("Amount > FALSE balance.");
-      }
-
-      const info1 = await program.provider.connection.getAccountInfo(userTrueAta);
-      const info2 = await program.provider.connection.getAccountInfo(userFalseAta);
-      if (!info1 || !info2) {
-        throw new Error("Missing TRUE/FALSE ATA. You probably don't hold both tokens for this event.");
-      }
-
-      console.log("[redeem] amount(base):", amount.toString());
-      console.log("[redeem] vault:", collateralVault.toBase58());
-      console.log("[redeem] trueMint:", trueMint.toBase58());
-      console.log("[redeem] falseMint:", falseMint.toBase58());
-      console.log("[redeem] userTrueAta:", userTrueAta.toBase58());
-      console.log("[redeem] userFalseAta:", userFalseAta.toBase58());
-
-      const tx = await program.methods
-        .redeemPairWhileActive(amount)
-        .accounts({
-          user,
-          event: eventPk,
-          collateralVault,
+      /*
+      * Derive the user's token accounts directly.
+      *
+      * Deriving an ATA does not mean it exists yet.
+      */
+      const userTrueAta =
+        getAssociatedTokenAddressSync(
           trueMint,
-          falseMint,
-          userTrueAta,
-          userFalseAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .transaction();
+          user,
+          false,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
 
-      const sig = await sendAndConfirm(tx, "redeemPairWhileActive");
+      const userFalseAta =
+        getAssociatedTokenAddressSync(
+          falseMint,
+          user,
+          false,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
+
+      /*
+      * Check both token accounts in one RPC request.
+      */
+      const [trueAtaInfo, falseAtaInfo] = await connection.getMultipleAccountsInfo([ userTrueAta, userFalseAta, ]);
+
+      if (!trueAtaInfo || !falseAtaInfo) {
+        throw new Error(
+          "You must hold both TRUE and FALSE tokens to redeem a pair."
+        );
+      }
+
+      /*
+      * Fetch both current balances.
+      *
+      * This avoids relying only on the React state, which may
+      * be slightly behind the latest blockchain state.
+      */
+      const [trueBalanceResult, falseBalanceResult] =
+        await Promise.all([
+          connection.getTokenAccountBalance(userTrueAta),
+          connection.getTokenAccountBalance(userFalseAta),
+        ]);
+
+      const trueBalanceBase = BigInt( trueBalanceResult?.value?.amount ?? "0" );
+
+      const falseBalanceBase = BigInt( falseBalanceResult?.value?.amount ?? "0" );
+
+      const redeemAmountBase = BigInt( amount.toString() );
+
+      if (redeemAmountBase > trueBalanceBase) {
+        throw new Error(
+          "Redeem amount is greater than your TRUE balance."
+        );
+      }
+
+      if (redeemAmountBase > falseBalanceBase) {
+        throw new Error(
+          "Redeem amount is greater than your FALSE balance."
+        );
+      }
+
+      /*
+      * Build the PredictSol instruction without sending it.
+      */
+      const redeemInstruction =
+        await program.methods
+          .redeemPairWhileActive(amount)
+          .accounts({
+            user,
+            event: eventPk,
+            collateralVault,
+            trueMint,
+            falseMint,
+            userTrueAta,
+            userFalseAta,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+
+      /*
+      * This transaction contains only one program instruction.
+      *
+      * We still use .instruction() so the structure is
+      * consistent and easy to extend later.
+      */
+      const tx = new Transaction().add(
+        redeemInstruction
+      );
+
+      console.log("[redeemPairWhileActive] prepared:", {
+        event: eventPk.toBase58(),
+        amountBase: amount.toString(),
+        amountUi: redeemAmountStr,
+
+        collateralVault: collateralVault.toBase58(),
+
+        trueMint: trueMint.toBase58(),
+        falseMint: falseMint.toBase58(),
+
+        userTrueAta: userTrueAta.toBase58(),
+        userFalseAta: userFalseAta.toBase58(),
+
+        trueBalanceBase: trueBalanceBase.toString(),
+        falseBalanceBase: falseBalanceBase.toString(),
+
+        instructionCount:
+          tx.instructions.length,
+      });
+
+      const sig = await sendAndConfirm( tx, "redeemPairWhileActive" );
 
       setRedeemSig(sig);
+
       await load();
     } catch (e) {
-      console.error("[redeem] failed:", e);
+      console.error( "[redeemPairWhileActive] failed:", e );
+
       if (typeof e?.getLogs === "function") {
         try {
-          console.log("[redeem] logs:", await e.getLogs());
-        } catch {}
+          console.log( "[redeemPairWhileActive] logs:", await e.getLogs() );
+        } catch {
+          // Program logs were unavailable.
+        }
       }
-      setRedeemErr(e?.message || String(e));
+
+      setRedeemErr(
+        e?.message || String(e)
+      );
     } finally {
       setRedeeming(false);
       redeemLockRef.current = false;
@@ -867,9 +1056,14 @@ export default function EventDetail() {
   }
 
   async function redeemWinnerAfterFinal(amountStr) {
-    if (!walletConnected) return setPostRedeemErr("Connect wallet to redeem.");
+    if (!walletConnected) {
+      setPostRedeemErr("Connect wallet to redeem.");
+      return;
+    }
+
     if (!program) return;
     if (postRedeemLockRef.current) return;
+
     postRedeemLockRef.current = true;
 
     setPostRedeemErr("");
@@ -877,28 +1071,39 @@ export default function EventDetail() {
 
     if (!ev?.resolved) {
       postRedeemLockRef.current = false;
-      setPostRedeemErr("Event is not finalized yet.");
+      setPostRedeemErr(
+        "Event is not finalized yet."
+      );
       return;
     }
 
-    // must be a real winner (winningOption 1 or 2 AND status winner)
-    const status = Number(ev?.resultStatus ?? 0);
-    const winOpt = Number(ev?.winningOption ?? 0);
-    if (status !== RESULT.RESOLVED_WINNER || (winOpt !== 1 && winOpt !== 2)) {
+    const resultStatus = Number( ev?.resultStatus ?? 0 );
+    const winningOption = Number( ev?.winningOption ?? 0 );
+
+    const hasValidWinner = resultStatus === RESULT.RESOLVED_WINNER && (winningOption === 1 || winningOption === 2);
+
+    if (!hasValidWinner) {
       postRedeemLockRef.current = false;
-      setPostRedeemErr("No winner for this event. Use the no-winner redeem instead.");
+      setPostRedeemErr(
+        "This event has no winning token. Use no-winner redemption instead."
+      );
       return;
     }
 
     const amount = toBaseUnits(amountStr);
+
     if (!amount) {
       postRedeemLockRef.current = false;
-      setPostRedeemErr("Enter a valid amount > 0 (example: 0.1)");
+      setPostRedeemErr(
+        "Enter a valid amount greater than 0. Example: 0.1"
+      );
       return;
     }
 
     setPostRedeeming(true);
+
     try {
+      const connection = program.provider.connection;
       const eventPk = new PublicKey(eventPda);
       const user = wallet.publicKey;
 
@@ -906,58 +1111,136 @@ export default function EventDetail() {
       const [trueMint] = findTrueMintPda(eventPk);
       const [falseMint] = findFalseMintPda(eventPk);
 
-      const mint = winOpt === 1 ? trueMint : falseMint;
+      /*
+      * winningOption:
+      * 1 = TRUE
+      * 2 = FALSE
+      */
+      const winnerSide = winningOption === 1 ? "TRUE" : "FALSE";
+      const winnerMint = winningOption === 1 ? trueMint : falseMint;
 
-      const userAta = getAssociatedTokenAddressSync(
-        mint,
-        user,
-        false,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      );
+      /*
+      * Derive the user's winning token account.
+      */
+      const userWinnerAta =
+        getAssociatedTokenAddressSync(
+          winnerMint,
+          user,
+          false,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
 
-      const info = await program.provider.connection.getAccountInfo(userAta);
-      if (!info) throw new Error("Missing winning token ATA.");
+      /*
+      * A missing ATA means the user does not hold
+      * the winning token.
+      */
+      const winnerAtaInfo =
+        await connection.getAccountInfo(
+          userWinnerAta
+        );
 
-      // const bal = await program.provider.connection.getTokenAccountBalance(userAta);
-      // if (BigInt(amount.toString()) > BigInt(bal.value.amount)) {
-      //   throw new Error("The requested amount is greater than your balance.");
-      // }
-      const side = Number(ev?.winningOption ?? 0);
-      const balBase = side === 1 ? userToken.trueBalBase : userToken.falseBalBase;
-      if (BigInt(amount.toString()) > BigInt(balBase || "0")) {
-        throw new Error("The requested amount is greater than your balance.");
+      if (!winnerAtaInfo) {
+        throw new Error( `You do not have a ${winnerSide} token account for this event.` );
       }
 
-      const tx = await program.methods
-        .redeemWinnerAfterFinal(amount)
-        .accounts({
-          user,
-          event: eventPk,
-          collateralVault,
-          mint,
-          userAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .transaction();
+      /*
+      * Read the latest on-chain balance rather than
+      * relying only on React state.
+      */
+      const winnerBalanceResult = await connection.getTokenAccountBalance( userWinnerAta );
 
-      const sig = await sendAndConfirm(tx, "redeemWinnerAfterFinal");
+      const winnerBalanceBase = BigInt( winnerBalanceResult?.value?.amount ?? "0" );
+
+      const redeemAmountBase = BigInt( amount.toString() );
+
+      if (winnerBalanceBase <= 0n) {
+        throw new Error( `You do not have any ${winnerSide} tokens to redeem.` );
+      }
+
+      if ( redeemAmountBase > winnerBalanceBase
+      ) {
+        throw new Error( `Redeem amount is greater than your ${winnerSide} balance.` );
+      }
+
+      /*
+      * Build the PredictSol redemption instruction
+      * without sending it yet.
+      */
+      const redeemInstruction =
+        await program.methods
+          .redeemWinnerAfterFinal(amount)
+          .accounts({
+            user,
+            event: eventPk,
+            collateralVault,
+            mint: winnerMint,
+            userAta: userWinnerAta,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+
+      const tx = new Transaction().add( redeemInstruction );
+
+      console.log(
+        "[redeemWinnerAfterFinal] prepared:",
+        {
+          event: eventPk.toBase58(),
+          winnerSide,
+          winningOption,
+
+          amountUi: amountStr,
+          amountBase: amount.toString(),
+
+          collateralVault: collateralVault.toBase58(),
+          winnerMint: winnerMint.toBase58(),
+
+          userWinnerAta: userWinnerAta.toBase58(),
+
+          winnerBalanceBase: winnerBalanceBase.toString(),
+
+          instructionCount: tx.instructions.length,
+        }
+      );
+
+      const sig = await sendAndConfirm( tx, "redeemWinnerAfterFinal" );
+
       setPostRedeemSig(sig);
+
       await load();
     } catch (e) {
-      console.error("[redeemWinnerAfterFinal] failed:", e);
-      setPostRedeemErr(e?.message || String(e));
+      console.error(
+        "[redeemWinnerAfterFinal] failed:",
+        e
+      );
+
+      if (typeof e?.getLogs === "function") {
+        try {
+          console.log( "[redeemWinnerAfterFinal] logs:", await e.getLogs() );
+        } catch {
+          // Program logs were unavailable.
+        }
+      }
+
+      setPostRedeemErr(
+        e?.message || String(e)
+      );
     } finally {
       setPostRedeeming(false);
       postRedeemLockRef.current = false;
     }
   }
 
-  async function redeemNoWinnerAfterFinal(amountStr, sideStr /* "TRUE" | "FALSE" */) {
-    if (!walletConnected) return setPostRedeemErr("Connect wallet to redeem.");
+  async function redeemNoWinnerAfterFinal(amountStr, sideStr) {
+    if (!walletConnected) {
+      setPostRedeemErr("Connect wallet to redeem.");
+      return;
+    }
+
     if (!program) return;
     if (postRedeemLockRef.current) return;
+
     postRedeemLockRef.current = true;
 
     setPostRedeemErr("");
@@ -969,82 +1252,168 @@ export default function EventDetail() {
       return;
     }
 
-    // must be finalized but with NO winner
-    const status = Number(ev?.resultStatus ?? 0);
+    const resultStatus = Number( ev?.resultStatus ?? 0 );
+
     const noWinnerStatuses = [
       RESULT.FINALIZED_NO_VOTES,
       RESULT.FINALIZED_TIE,
       RESULT.FINALIZED_BELOW_THRESHOLD,
     ];
 
-    if (!noWinnerStatuses.includes(status)) {
+    if (!noWinnerStatuses.includes(resultStatus)) {
       postRedeemLockRef.current = false;
-      setPostRedeemErr("This event has a winner. Use winner redemption instead.");
+      setPostRedeemErr(
+        "This event has a winner. Use winner redemption instead."
+      );
       return;
     }
 
     const amount = toBaseUnits(amountStr);
+
     if (!amount) {
       postRedeemLockRef.current = false;
-      setPostRedeemErr("Enter a valid amount > 0 (example: 0.1)");
+      setPostRedeemErr(
+        "Enter a valid amount greater than 0. Example: 0.1"
+      );
       return;
     }
 
-    const side = String(sideStr || "").toUpperCase();
+    const side = String( sideStr || "" ).toUpperCase();
+
     if (side !== "TRUE" && side !== "FALSE") {
       postRedeemLockRef.current = false;
-      setPostRedeemErr('Invalid side. Use "TRUE" or "FALSE".');
+      setPostRedeemErr(
+        'Invalid side. Use "TRUE" or "FALSE".'
+      );
       return;
     }
 
     setPostRedeeming(true);
+
     try {
+      const connection = program.provider.connection;
       const eventPk = new PublicKey(eventPda);
       const user = wallet.publicKey;
-
       const [collateralVault] = await findCollateralVaultPda(eventPk);
       const [trueMint] = findTrueMintPda(eventPk);
       const [falseMint] = findFalseMintPda(eventPk);
 
-      const mint = side === "TRUE" ? trueMint : falseMint;
+      /*
+      * TRUE is encoded as 1.
+      * FALSE is encoded as 2.
+      */
+      const sideU8 = side === "TRUE" ? 1 : 2;
+      const selectedMint = side === "TRUE" ? trueMint : falseMint;
 
-      const userAta = getAssociatedTokenAddressSync(
-        mint,
-        user,
-        false,
-        TOKEN_PROGRAM_ID,
-        ASSOCIATED_TOKEN_PROGRAM_ID
-      );
+      /*
+      * Derive the user's ATA for the selected side.
+      */
+      const userSelectedAta =
+        getAssociatedTokenAddressSync(
+          selectedMint,
+          user,
+          false,
+          TOKEN_PROGRAM_ID,
+          ASSOCIATED_TOKEN_PROGRAM_ID
+        );
 
-      const info = await program.provider.connection.getAccountInfo(userAta);
-      if (!info) throw new Error(`Missing ${side} token ATA.`);
+      /*
+      * A missing ATA means the user cannot hold tokens
+      * for this side.
+      */
+      const selectedAtaInfo = await connection.getAccountInfo( userSelectedAta );
 
-      //const bal = await program.provider.connection.getTokenAccountBalance(userAta);
-      const balBase = side === "TRUE" ? userToken.trueBalBase : userToken.falseBalBase;
-      if (BigInt(amount.toString()) > BigInt(balBase || "0")) {
-        throw new Error("The requested amount is greater than your balance.");
+      if (!selectedAtaInfo) {
+        throw new Error( `You do not have a ${side} token account for this event.` );
       }
 
-      const sideU8 = side === "TRUE" ? 1 : 2;
-      const tx = await program.methods
-        .redeemNoWinnerAfterFinal(sideU8, amount)
-        .accounts({
-          user,
-          event: eventPk,
-          collateralVault,
-          mint,
-          userAta,
-          tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
-        })
-        .transaction();
+      /*
+      * Read the latest on-chain token balance.
+      */
+      const selectedBalanceResult = await connection.getTokenAccountBalance( userSelectedAta );
+      const selectedBalanceBase = BigInt( selectedBalanceResult?.value?.amount ?? "0" );
 
-      const sig = await sendAndConfirm(tx, "redeemNoWinnerAfterFinal");
+      const redeemAmountBase = BigInt( amount.toString() );
+
+      if (selectedBalanceBase <= 0n) {
+        throw new Error( `You do not have any ${side} tokens to redeem.` );
+      }
+
+      if ( redeemAmountBase > selectedBalanceBase ) {
+        throw new Error( `Redeem amount is greater than your ${side} balance.` );
+      }
+
+      /*
+      * Build the PredictSol instruction without sending.
+      */
+      const redeemInstruction =
+        await program.methods
+          .redeemNoWinnerAfterFinal(
+            sideU8,
+            amount
+          )
+          .accounts({
+            user,
+            event: eventPk,
+            collateralVault,
+            mint: selectedMint,
+            userAta: userSelectedAta,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+
+      const tx = new Transaction().add( redeemInstruction );
+
+      console.log(
+        "[redeemNoWinnerAfterFinal] prepared:",
+        {
+          event: eventPk.toBase58(),
+          resultStatus,
+
+          side,
+          sideU8,
+
+          amountUi: amountStr,
+          amountBase: amount.toString(),
+
+          collateralVault: collateralVault.toBase58(),
+
+          selectedMint: selectedMint.toBase58(),
+
+          userSelectedAta: userSelectedAta.toBase58(),
+
+          selectedBalanceBase: selectedBalanceBase.toString(),
+
+          instructionCount: tx.instructions.length,
+        }
+      );
+
+      const sig = await sendAndConfirm( tx, "redeemNoWinnerAfterFinal" );
+
       setPostRedeemSig(sig);
+
       await load();
     } catch (e) {
-      console.error("[redeemNoWinnerAfterFinal] failed:", e);
-      setPostRedeemErr(e?.message || String(e));
+      console.error(
+        "[redeemNoWinnerAfterFinal] failed:",
+        e
+      );
+
+      if (typeof e?.getLogs === "function") {
+        try {
+          console.log(
+            "[redeemNoWinnerAfterFinal] logs:",
+            await e.getLogs()
+          );
+        } catch {
+          // Program logs were unavailable.
+        }
+      }
+
+      setPostRedeemErr(
+        e?.message || String(e)
+      );
     } finally {
       setPostRedeeming(false);
       postRedeemLockRef.current = false;

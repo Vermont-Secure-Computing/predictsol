@@ -31,12 +31,6 @@ import { getConstants } from "../constants";
 import TxHint from "../components/TxHints";
 
 
-function toUnixSeconds(dateStr) {
-  const ms = new Date(dateStr).getTime();
-  return Math.floor(ms / 1000);
-}
-
-
 export default function CreateEvent() {
   const { 
     CATEGORY_OPTIONS, 
@@ -51,7 +45,6 @@ export default function CreateEvent() {
   const [betEnd, setBetEnd] = useState("");
   const [commitEnd, setCommitEnd] = useState("");
   const [revealEnd, setRevealEnd] = useState("");
-  const [truthQuestion, setTruthQuestion] = useState("");
   const [showCreateInstructions, setShowCreateInstructions] = useState(false);
 
   const [busy, setBusy] = useState(false);
@@ -88,19 +81,6 @@ export default function CreateEvent() {
     }
   }
 
-  async function waitForAccountReady(conn, pubkey, owner, label, timeoutMs = 15000) {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      const ai = await conn.getAccountInfo(pubkey, { commitment: "confirmed" });
-      if (ai && ai.owner?.equals(owner) && ai.data?.length > 0) {
-        console.log(`[${label}] account ready`, pubkey.toBase58(), "len:", ai.data.length);
-        return;
-      }
-      await new Promise((r) => setTimeout(r, 500));
-    }
-    throw new Error(`[${label}] account not visible/ready after ${timeoutMs}ms: ${pubkey.toBase58()}`);
-  }
-
 
   // Auto fill commit and reveal end time
   useEffect(() => {
@@ -131,232 +111,217 @@ export default function CreateEvent() {
   }, [commitEnd]);
 
 
-  async function ensureCounter() {
-    const [counterPda] = await findCounterPda(wallet.publicKey);
-    const counterAcc = await program.account.eventCounter.fetchNullable(counterPda);
+  async function buildCreateEventTransaction({
+    title,
+    category,
+    bet,
+    commit,
+    reveal,
+  }) {
+    const creator = wallet.publicKey;
+    const truth = getTruthProgram(wallet);
 
-    if (counterAcc) {
-      console.log("[ensureCounter] counter exists:", counterPda.toBase58(), "count:", counterAcc.count?.toString?.());
-      return { counterPda, counterAcc };
+    const predictConnection = program.provider.connection;
+    const truthConnection = truth.provider.connection;
+
+    if ( predictConnection.rpcEndpoint !== truthConnection.rpcEndpoint ) {
+      throw new Error(
+        "PredictSol and Truth Network are using different RPC endpoints."
+      );
     }
 
-    console.log("[ensureCounter] counter missing, initializing:", counterPda.toBase58());
+    const transaction = new Transaction();
 
-    const tx = await program.methods
-      .initializeEventCounter()
-      .accounts({
-        creator: wallet.publicKey,
-        counter: counterPda,
-        systemProgram: SystemProgram.programId,
+    transaction.add(
+      ComputeBudgetProgram.setComputeUnitLimit({
+        units: 1_000_000,
+      }),
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: 10_000,
       })
-      .transaction();
+    );
 
-    const sig = await sendAndConfirm(tx, "initializeEventCounter");
+    /*
+    * PredictSol event counter
+    */
 
-    const counterAcc2 = await program.account.eventCounter.fetch(counterPda);
-    console.log("[ensureCounter] initialized via", sig, "new count:", counterAcc2.count?.toString?.());
+    const [counterPda] = await findCounterPda(creator);
 
-    return { counterPda, counterAcc: counterAcc2 };
-  }
+    const counterAccount =
+      await program.account.eventCounter.fetchNullable(
+        counterPda
+      );
 
-  /**
-   * create the event on the truth network
-   */
-  async function createTruthQuestion({ title, commit, reveal }) {
-    const truth = getTruthProgram(wallet);
-    const conn = truth.provider.connection;
+    const eventId = counterAccount
+      ? new BN(counterAccount.count.toString())
+      : new BN(0);
 
-    const asker = wallet.publicKey;
+    if (!counterAccount) {
+      const initializeCounterInstruction =
+        await program.methods
+          .initializeEventCounter()
+          .accounts({
+            creator,
+            counter: counterPda,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction();
 
-    // 1) counter PDA
-    const [counterPda] = await findTruthCounterPda(asker);
-    let counterAcc = await truth.account.questionCounter.fetch(counterPda).catch(() => null);
+      transaction.add(initializeCounterInstruction);
+    }
 
+    const eventIdBuffer = eventId.toArrayLike(
+      Buffer,
+      "le",
+      8
+    );
 
-    // 2) init counter if missing (TX)
-    if (!counterAcc) {
-      const txInit = await truth.methods
-        .initializeCounter()
+    const [eventPda] = await findEventPda(
+      creator,
+      eventIdBuffer
+    );
+
+    /*
+    * Truth Network question counter
+    */
+
+    const [truthCounterPda] =
+      await findTruthCounterPda(creator);
+
+    const truthCounterAccount =
+      await truth.account.questionCounter
+        .fetch(truthCounterPda)
+        .catch(() => null);
+
+    const questionId = truthCounterAccount
+      ? new BN(truthCounterAccount.count.toString())
+      : new BN(0);
+
+    if (!truthCounterAccount) {
+      const initializeTruthCounterInstruction =
+        await truth.methods
+          .initializeCounter()
+          .accounts({
+            questionCounter: truthCounterPda,
+            asker: creator,
+            systemProgram: SystemProgram.programId,
+          })
+          .instruction();
+
+      transaction.add(
+        initializeTruthCounterInstruction
+      );
+    }
+
+    const questionIdBuffer = questionId.toArrayLike(
+      Buffer,
+      "le",
+      8
+    );
+
+    const [truthQuestionPda] =
+      findTruthQuestionPda(
+        creator,
+        questionIdBuffer
+      );
+
+    const [truthVaultPda] =
+      await findTruthVaultPda(
+        truthQuestionPda
+      );
+
+    /*
+    * Create the Truth Network question.
+    */
+
+    const rewardLamports = new BN(100_000_000);
+
+    const createTruthQuestionInstruction =
+      await truth.methods
+        .createQuestion(
+          title,
+          rewardLamports,
+          commit,
+          reveal
+        )
         .accounts({
-          questionCounter: counterPda,
-          asker,
+          asker: creator,
+          questionCounter: truthCounterPda,
+          question: truthQuestionPda,
+          vault: truthVaultPda,
           systemProgram: SystemProgram.programId,
         })
-        .transaction();
+        .instruction();
 
-      await sendAndConfirmSafe({ conn, wallet, tx: txInit, label: "truth:initCounter", simulate: null });
-      counterAcc = await truth.account.questionCounter.fetch(counterPda);
-    }
+    transaction.add(
+      createTruthQuestionInstruction
+    );
 
-    // 3) derive question PDA using current count
-    const qid = new BN(counterAcc.count);
-    const qidLe = qid.toArrayLike(Buffer, "le", 8);
-    const [questionPda] = findTruthQuestionPda(asker, qidLe);
+    /*
+    * Create the PredictSol event account.
+    */
 
-    // 4) vault PDA
-    const [vaultPda] = await findTruthVaultPda(questionPda);
-
-    // if question already exists, just return it
-    const existing = await truth.account.question.fetch(questionPda).catch(() => null);
-    if (existing) {
-      console.log("[truth] question already exists:", questionPda.toBase58());
-      return questionPda;
-    }
-
-    // 5) create question (TX)
-    const rewardLamports = new BN(100_000_000); // 0.1 SOL default reward (adjust later)
-
-    const txCreate = await truth.methods
-      .createQuestion(title, rewardLamports, commit, reveal)
-      .accounts({
-        asker,
-        questionCounter: counterPda,
-        question: questionPda,
-        vault: vaultPda,
-        systemProgram: SystemProgram.programId,
-      })
-      .transaction();
-
-    try {
-      await sendAndConfirmSafe({ conn, wallet, tx: txCreate, label: "truth:createQuestion", simulate: null });
-    } catch (e) {
-      console.error(e);
-      if (e.logs) {
-        console.log("Program logs:");
-        e.logs.forEach(log => console.log(log));
-      }
-      // if send failed but account exists, treat as success
-      const existsAfter = await truth.account.question.fetch(questionPda).catch(() => null);
-      if (existsAfter) {
-        console.warn("[truth] create tx errored but question exists; continuing.");
-        return questionPda;
-      }
-      throw e;
-    }
-
-    return questionPda;
-  }
-
-
-  async function onSubmit(e) {
-    e.preventDefault();
-
-    if (!wallet.publicKey) return alert("Connect wallet");
-    if (!program) return alert("Program not ready");
-
-    if (submitLockRef.current) return;
-    submitLockRef.current = true;
-
-    if (title.trim().length < 10 || title.trim().length > 150) {
-      submitLockRef.current = false;
-      return alert("Title must be 10-150 characters.");
-    }
-    if (!betEnd || !commitEnd || !revealEnd) {
-      submitLockRef.current = false;
-      return alert("Please set bet/commit/reveal times.");
-    }
-
-    const cat = Number(category);
-    if (!Number.isInteger(cat) || cat < 0 || cat > 3) {
-      submitLockRef.current = false;
-      return alert("Invalid category.");
-    }
-
-    setBusy(true);
-    setMsg("");
-
-    try {
-      // 1) ensure counter exists
-      const { counterPda, counterAcc } = await ensureCounter();
-
-      const eventId = new BN(counterAcc.count);
-      const eventIdLe = eventId.toArrayLike(Buffer, "le", 8);
-
-      // 2) derive Event PDA
-      const [eventPda] = await findEventPda(wallet.publicKey, eventIdLe);
-
-      console.log("[createEvent] counter:", counterPda.toBase58());
-      console.log("[createEvent] eventId:", eventId.toString());
-      console.log("[createEvent] eventPda:", eventPda.toBase58());
-
-      // 3) args
-      const now = Date.now();
-
-      const betMs = new Date(betEnd).getTime();
-      const commitMs = new Date(commitEnd).getTime();
-      const revealMs = new Date(revealEnd).getTime();
-
-      if (!Number.isFinite(betMs) || !Number.isFinite(commitMs) || !Number.isFinite(revealMs)) {
-        return alert("Invalid date/time input.");
-      }
-
-      if (betMs <= now) return alert("Close date must be in the future.");
-
-      if (commitMs - betMs < 1 * 24 * 60 * 60 * 1000) {
-        return alert("Commit End Time must be at least 1 day after Betting Close Date.");
-      }
-
-      if (revealMs - commitMs < 1 * 24 * 60 * 60 * 1000) {
-        return alert("Reveal End Time must be at least 1 day after Commit End Time.");
-      }
-
-      const bet = new BN(Math.floor(betMs / 1000));
-      const commit = new BN(Math.floor(commitMs / 1000));
-      const reveal = new BN(Math.floor(revealMs / 1000));
-
-
-      const truthQuestionPda = await createTruthQuestion({
-        title: title.trim(),
-        commit,
-        reveal,
-      });
-      console.log("[createEvent] truthQuestionPda:", truthQuestionPda.toBase58());
-
-
-      // TX #1: create_event_core
-      const tx1 = await program.methods
-        .createEventCore(title.trim(), cat, bet, commit, reveal, truthQuestionPda)
+    const createEventCoreInstruction =
+      await program.methods
+        .createEventCore(
+          title,
+          category,
+          bet,
+          commit,
+          reveal,
+          truthQuestionPda
+        )
         .accounts({
-          creator: wallet.publicKey,
+          creator,
           counter: counterPda,
           event: eventPda,
           systemProgram: SystemProgram.programId,
         })
-        .transaction();
+        .instruction();
 
-      const sig1 = await sendAndConfirm(tx1, "createEventCore");
+    transaction.add(
+      createEventCoreInstruction
+    );
 
-      // Wait until the account exists and is owned by the program
-      await waitForAccountReady(
-        program.provider.connection,
-        eventPda,
-        program.programId,
-        "eventPda"
-      );
+    /*
+    * Create vault, TRUE/FALSE mints, and metadata.
+    */
 
-      // 4) derive PDAs for mint/vault step
-      const [collateralVault] = await findCollateralVaultPda(eventPda);
-      const [mintAuthority] = findMintAuthorityPda(eventPda);
-      const [trueMint] = findTrueMintPda(eventPda);
-      const [falseMint] = findFalseMintPda(eventPda);
+    const [collateralVault] = await findCollateralVaultPda(eventPda);
 
-      const metadataProgram = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+    const [mintAuthority] = findMintAuthorityPda(eventPda);
 
-      const [trueMetadata] = PublicKey.findProgramAddressSync(
-        [Buffer.from("metadata"), metadataProgram.toBuffer(), trueMint.toBuffer()],
+    const [trueMint] = findTrueMintPda(eventPda);
+
+    const [falseMint] = findFalseMintPda(eventPda);
+
+    const metadataProgram = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+
+    const [trueMetadata] =
+      PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          metadataProgram.toBuffer(),
+          trueMint.toBuffer(),
+        ],
         metadataProgram
       );
 
-      const [falseMetadata] = PublicKey.findProgramAddressSync(
-        [Buffer.from("metadata"), metadataProgram.toBuffer(), falseMint.toBuffer()],
+    const [falseMetadata] =
+      PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("metadata"),
+          metadataProgram.toBuffer(),
+          falseMint.toBuffer(),
+        ],
         metadataProgram
       );
 
-      // Create the instruction
-      const createMintsIx = await program.methods
+    const createMintsInstruction =
+      await program.methods
         .createEventMints()
         .accounts({
-          creator: wallet.publicKey,
+          creator,
           event: eventPda,
           mintAuthority,
           trueMint,
@@ -371,28 +336,158 @@ export default function CreateEvent() {
         })
         .instruction();
 
-      const tx2 = new Transaction();
-      tx2.add(ComputeBudgetProgram.setComputeUnitLimit({ units: 450000 })); 
-      tx2.add(ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 10000 }));
-      tx2.add(createMintsIx);
+    transaction.add(createMintsInstruction);
 
-      console.log("[createEvent] Sending TX #2: createEventMints...");
-      const sig2 = await sendAndConfirm(tx2, "createEventMints");
-      console.log("[createEvent] TX #2 Success:", sig2);
+    return {
+      transaction,
+      eventPda,
+      truthQuestionPda,
+      trueMint,
+      falseMint,
+      collateralVault,
+    };
+  }
 
-      setMsg(`Event created!\ncore tx: ${sig1}\nmints tx: ${sig2}`);
+
+  async function onSubmit(e) {
+    e.preventDefault();
+
+    if (!wallet.publicKey) {
+      alert("Connect wallet.");
+      return;
+    }
+
+    if (!program) {
+      alert("Program not ready.");
+      return;
+    }
+
+    if (submitLockRef.current) { return; }
+
+    submitLockRef.current = true;
+
+    const cleanTitle = title.trim();
+
+    if (
+      cleanTitle.length < 10 ||
+      cleanTitle.length > 150
+    ) {
+      submitLockRef.current = false;
+      alert("Title must be 10-150 characters.");
+      return;
+    }
+
+    if (!betEnd || !commitEnd || !revealEnd) {
+      submitLockRef.current = false;
+      alert("Please set bet, commit, and reveal times.");
+      return;
+    }
+
+    const selectedCategory = Number(category);
+
+    if (
+      !Number.isInteger(selectedCategory) ||
+      selectedCategory < 0 ||
+      selectedCategory > 3
+    ) {
+      submitLockRef.current = false;
+      alert("Invalid category.");
+      return;
+    }
+
+    setBusy(true);
+    setMsg("");
+
+    try {
+      const now = Date.now();
+      const betMs = new Date(betEnd).getTime();
+      const commitMs = new Date(commitEnd).getTime();
+      const revealMs = new Date(revealEnd).getTime();
+
+      if (
+        !Number.isFinite(betMs) ||
+        !Number.isFinite(commitMs) ||
+        !Number.isFinite(revealMs)
+      ) {
+        throw new Error("Invalid date/time input.");
+      }
+
+      if (betMs <= now) {
+        throw new Error(
+          "Close date must be in the future."
+        );
+      }
+
+      const oneDayMs = 24 * 60 * 60 * 1000;
+
+      if (commitMs - betMs < oneDayMs) {
+        throw new Error(
+          "Commit End Time must be at least 1 day after the event closes."
+        );
+      }
+
+      if (revealMs - commitMs < oneDayMs) {
+        throw new Error(
+          "Reveal End Time must be at least 1 day after Commit End Time."
+        );
+      }
+
+      const bet = new BN(Math.floor(betMs / 1000));
+
+      const commit = new BN(Math.floor(commitMs / 1000));
+
+      const reveal = new BN(Math.floor(revealMs / 1000));
+
+      const {
+        transaction,
+        eventPda,
+        truthQuestionPda,
+        trueMint,
+        falseMint,
+      } = await buildCreateEventTransaction({
+        title: cleanTitle,
+        category: selectedCategory,
+        bet,
+        commit,
+        reveal,
+      });
+
+      console.log("[createEvent] event:", eventPda.toBase58());
+
+      console.log("[createEvent] truth question:", truthQuestionPda.toBase58());
+
+      console.log("[createEvent] TRUE mint:", trueMint.toBase58());
+
+      console.log("[createEvent] FALSE mint:", falseMint.toBase58());
+
+      const signature = await sendAndConfirm(
+        transaction,
+        "createEvent"
+      );
+
+      setMsg(`Event created!\nTransaction: ${signature}`);
+
       nav(`/event/${eventPda.toBase58()}`);
     } catch (err) {
-      console.error(err);
+      console.error("[createEvent] failed:", err);
 
       if (typeof err?.getLogs === "function") {
         try {
           const logs = await err.getLogs();
-          console.log("SendTransactionError logs:", logs);
-        } catch {}
+
+          console.error(
+            "[createEvent] program logs:",
+            logs
+          );
+        } catch {
+          // The wallet or RPC did not provide logs.
+        }
       }
 
-      setMsg(err?.message || String(err));
+      setMsg(
+        err?.message ||
+          "Failed to create event."
+      );
     } finally {
       setBusy(false);
       submitLockRef.current = false;
@@ -558,9 +653,10 @@ export default function CreateEvent() {
           >
             {busy ? "Creating..." : "Create Event"}
           </button>
-          <TxHint>First create ~4 transactions • Later ~3 transactions</TxHint>
+          <TxHint>One wallet confirmation creates the oracle question, event, vault, and TRUE/FALSE tokens.</TxHint>
           <div className="text-[11px] text-gray-500 dark:text-gray-400">
-            First time only: initializes your question creator account.
+            First-time counter initialization is included automatically
+            in the same transaction.
           </div>
 
     

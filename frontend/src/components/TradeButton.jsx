@@ -19,9 +19,19 @@ export function TradeButtons({ ev }) {
   const trueMint = ev?.trueMint?.toBase58?.();
   const falseMint = ev?.falseMint?.toBase58?.();
 
-  const { loading, err, truePool, falsePool } = useBestPools({ trueMint, falseMint });
-  //const { loading, err, truePool, falsePool, truePrice, falsePrice, truePriceUsd, falsePriceUsd, } = useBestPools({ trueMint, falseMint });
-  //const { truePrice, falsePrice, truePriceUsd, falsePriceUsd } = useBestPools({trueMint, falseMint });
+  // options: "buy", "sell", "mid"
+  const PRICE_MODE = "buy"; 
+
+  const {
+    loading,
+    err,
+    truePool,
+    falsePool,
+    truePriceSol,
+    falsePriceSol,
+    trueOhlcv,
+    falseOhlcv,
+  } = useBestPools({ trueMint, falseMint, refreshMs: 20000, priceMode: PRICE_MODE, });
 
   const show = !!truePool || !!falsePool;
   const dexName = truePool?.dexId || falsePool?.dexId || "DEX";
@@ -46,7 +56,7 @@ export function TradeButtons({ ev }) {
     <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
       <div className="mb-2 flex items-center justify-between">
         <div className="text-sm font-semibold">
-          Current Market Prediction:
+          Current External Market Prediction:
         </div>
         {loading ? (
           <div className="text-xs opacity-70">Checking pools…</div>
@@ -56,7 +66,7 @@ export function TradeButtons({ ev }) {
           <div className="flex flex-col items-end text-xs opacity-80 leading-tight">
             
             <div className="flex gap-3 text-xs font-medium">
-              {truePool?.priceNative && (
+              {/* {truePool?.priceNative && (
                 <span className="text-emerald-600 dark:text-emerald-400">
                   TRUE {Number(truePool.priceNative).toFixed(4) * 100} %
                 </span>
@@ -64,6 +74,17 @@ export function TradeButtons({ ev }) {
               {falsePool?.priceNative && (
                 <span className="text-rose-600 dark:text-rose-400">
                   FALSE {Number(falsePool.priceNative).toFixed(4) * 100} %
+                </span>
+              )} */}
+              {truePriceSol && (
+                <span className="text-emerald-600 dark:text-emerald-400">
+                  TRUE {(Number(truePriceSol) * 100).toFixed(2)} %
+                </span>
+              )}
+
+              {falsePriceSol && (
+                <span className="text-rose-600 dark:text-rose-400">
+                  FALSE {(Number(falsePriceSol) * 100).toFixed(2)} %
                 </span>
               )}
               {/* <p>
@@ -309,17 +330,19 @@ export function TradeButtons({ ev }) {
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950/40">
             <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
               <span>TRUE chart</span>
-              {truePool?.priceNative && (
+              {/* {truePool?.priceNative && (
                 <span className="text-emerald-600 dark:text-emerald-400">
                   {Number(truePool.priceNative).toFixed(4)} SOL
                 </span>
-              )}
+              )} */}
+              <span className="text-emerald-600 dark:text-emerald-400">
+                {truePriceSol ? `${Number(truePriceSol).toFixed(4)} SOL` : "—"}
+              </span>
             </div>
 
             <iframe
               title="GeckoTerminal TRUE"
               src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
-              //src="https://raydium.io/swap/?inputMint=sol&outputMint=Ebnuk1hkNh3MwSxo2G9ByrnxzLYSmzDXHYSC2LSemahN"
               frameBorder={0}
               allow="clipboard-write"
               allowFullScreen={false}
@@ -337,11 +360,14 @@ export function TradeButtons({ ev }) {
           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950/40">
             <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
               <span>FALSE chart</span>
-              {falsePool?.priceNative && (
+              {/* {falsePool?.priceNative && (
                 <span className="text-rose-600 dark:text-rose-400">
                   {Number(falsePool.priceNative).toFixed(4)} SOL
                 </span>
-              )}
+              )} */}
+              <span className="text-rose-600 dark:text-rose-400">
+                {falsePriceSol ? `${Number(falsePriceSol).toFixed(4)} SOL` : "—"}
+              </span>
             </div>
 
             <iframe
@@ -364,3 +390,386 @@ export function TradeButtons({ ev }) {
     </div>
   );
 }
+
+{/**
+  USING MID POINT
+  */}
+// import React, { useState, useMemo } from "react";
+// import { useBestPools } from "../hooks/dexFetcher";
+// import { FaChevronDown, FaChevronUp, FaExclamation } from "react-icons/fa";
+
+// function raydiumSwapUrl({ outputMint, inputMint = "sol" }) {
+//   return `https://raydium.io/swap/?outputMint=${outputMint}&inputMint=${inputMint}`;
+// }
+
+// function jupiterSwapUrl(outputMint) {
+//   return `https://jup.ag/swap?sell=So11111111111111111111111111111111111111112&buy=${outputMint}`;
+// }
+
+// function fmtSol(value, decimals = 4) {
+//   const n = Number(value);
+//   if (!Number.isFinite(n) || n <= 0) return "—";
+//   return `${n.toFixed(decimals)} SOL`;
+// }
+
+// function fmtPercent(value) {
+//   const n = Number(value);
+//   if (!Number.isFinite(n) || n <= 0) return "—";
+//   return `${(n * 100).toFixed(2)}%`;
+// }
+
+// function fmtSpread(value) {
+//   const n = Number(value);
+//   if (!Number.isFinite(n) || n <= 0) return null;
+//   return `${n.toFixed(1)}%`;
+// }
+
+// export function TradeButtons({ ev }) {
+//   const trueMint = ev?.trueMint?.toBase58?.();
+//   const falseMint = ev?.falseMint?.toBase58?.();
+
+//   const {
+//     loading,
+//     err,
+//     truePool,
+//     falsePool,
+
+//     truePriceSol,
+//     falsePriceSol,
+
+//     trueBuyPriceSol,
+//     trueSellPriceSol,
+//     trueSpreadPct,
+
+//     falseBuyPriceSol,
+//     falseSellPriceSol,
+//     falseSpreadPct,
+//   } = useBestPools({ trueMint, falseMint, refreshMs: 20000 });
+
+//   const [showDexNote, setShowDexNote] = useState(false);
+
+//   const bettingClosed = useMemo(() => {
+//     if (!ev.betEndTime) return false;
+//     const now = Math.floor(Date.now() / 1000);
+//     return now >= Number(ev.betEndTime);
+//   }, [ev?.betEndTime]);
+
+//   const eventLocked = ev?.resolved || bettingClosed;
+
+//   const show = !!truePool || !!falsePool;
+//   if (!show) return null;
+
+//   const hasTrue = !!truePool?.pairAddress;
+//   const hasFalse = !!falsePool?.pairAddress;
+//   const hasBoth = hasTrue && hasFalse;
+
+//   return (
+//     <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-3 shadow-sm dark:border-gray-800 dark:bg-gray-900/60">
+//       <div className="mb-2 flex items-center justify-between">
+//         <div className="text-sm font-semibold">
+//           Current External Market Prediction:
+//         </div>
+
+//         {loading ? (
+//           <div className="text-xs opacity-70">Checking pools…</div>
+//         ) : err ? (
+//           <div className="text-xs text-rose-600 dark:text-rose-300">
+//             Pool check error
+//           </div>
+//         ) : (
+//           <div className="flex flex-col items-end text-xs opacity-80 leading-tight">
+//             <div className="flex gap-3 text-xs font-medium">
+//               {truePriceSol && (
+//                 <span className="text-emerald-600 dark:text-emerald-400">
+//                   TRUE mid {fmtPercent(truePriceSol)}
+//                 </span>
+//               )}
+
+//               {falsePriceSol && (
+//                 <span className="text-rose-600 dark:text-rose-400">
+//                   FALSE mid {fmtPercent(falsePriceSol)}
+//                 </span>
+//               )}
+//             </div>
+
+//             <div className="text-xs opacity-70">
+//               {truePool
+//                 ? `TRUE LP: $${(truePool?.liquidity?.usd ?? 0).toFixed(1)}`
+//                 : "TRUE: no pool"}{" "}
+//               ·{" "}
+//               {falsePool
+//                 ? `FALSE LP: $${(falsePool?.liquidity?.usd ?? 0).toFixed(1)}`
+//                 : "FALSE: no pool"}
+//             </div>
+
+//             <div className="text-[11px] opacity-60">
+//               Mid = average of Raydium buy and sell quote
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       <div className="mb-2">
+//         <button
+//           type="button"
+//           onClick={() => setShowDexNote((v) => !v)}
+//           className="inline-flex items-center gap-2 text-xs font-medium text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+//         >
+//           <span className="inline-flex h-5 w-5 items-center justify-center rounded-full border border-gray-300 bg-white text-[11px] dark:border-gray-700 dark:bg-gray-900">
+//             <FaExclamation />
+//           </span>
+
+//           <span>DEX warnings</span>
+
+//           {showDexNote ? (
+//             <FaChevronUp className="h-4 w-4 opacity-70" />
+//           ) : (
+//             <FaChevronDown className="h-4 w-4 opacity-70" />
+//           )}
+//         </button>
+
+//         {showDexNote && (
+//           <div className="mt-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700 dark:border-gray-800 dark:bg-gray-950/40 dark:text-gray-200">
+//             <div className="space-y-1.5">
+//               <div className="font-semibold">
+//                 Why DEX shows “This token is mintable”
+//               </div>
+
+//               <div className="opacity-90">
+//                 TRUE/FALSE shares are minted by a program-controlled PDA while
+//                 the event is active, so users can buy positions. This is
+//                 expected for prediction share tokens.
+//               </div>
+
+//               <div className="opacity-90">
+//                 <span className="font-semibold">Minting status:</span>{" "}
+//                 {eventLocked ? (
+//                   <span className="text-emerald-700 dark:text-emerald-300 font-medium">
+//                     minting disabled for this event
+//                   </span>
+//                 ) : (
+//                   <span className="text-amber-700 dark:text-amber-300 font-medium">
+//                     minting allowed only during betting window
+//                   </span>
+//                 )}
+//               </div>
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+//         {truePool && trueMint && !eventLocked && (
+//           <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+//             <div className="mb-3 flex items-center justify-between">
+//               <div>
+//                 <div className="font-bold text-emerald-700 dark:text-emerald-300">
+//                   TRUE Market Buy / Sell
+//                 </div>
+//                 <div className="mt-1 text-xs text-emerald-700 dark:text-emerald-300">
+//                   Mid: {fmtSol(truePriceSol)} · Buy:{" "}
+//                   {fmtSol(trueBuyPriceSol)} · Sell: {fmtSol(trueSellPriceSol)}
+//                 </div>
+
+//                 {fmtSpread(trueSpreadPct) && (
+//                   <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+//                     Spread: {fmtSpread(trueSpreadPct)}
+//                   </div>
+//                 )}
+//               </div>
+
+//               <div className="text-[11px] px-2 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
+//                 TRADE
+//               </div>
+//             </div>
+
+//             <div className="grid grid-cols-2 gap-2">
+//               <a
+//                 href={jupiterSwapUrl(trueMint)}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 className="flex items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-100 dark:bg-transparent dark:border-emerald-800 dark:hover:bg-emerald-900/30"
+//               >
+//                 Jupiter
+//               </a>
+
+//               <a
+//                 href={raydiumSwapUrl({ outputMint: trueMint })}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 className="flex items-center justify-center rounded-xl border border-emerald-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-emerald-100 dark:bg-transparent dark:border-emerald-800 dark:hover:bg-emerald-900/30"
+//               >
+//                 Raydium
+//               </a>
+//             </div>
+//           </div>
+//         )}
+
+//         {falsePool && falseMint && !eventLocked && (
+//           <div className="rounded-2xl border border-rose-200 bg-rose-50/70 p-4 dark:border-rose-900/40 dark:bg-rose-950/20">
+//             <div className="mb-3 flex items-center justify-between">
+//               <div>
+//                 <div className="font-bold text-rose-700 dark:text-rose-300">
+//                   FALSE Market Buy / Sell
+//                 </div>
+//                 <div className="mt-1 text-xs text-rose-700 dark:text-rose-300">
+//                   Mid: {fmtSol(falsePriceSol)} · Buy:{" "}
+//                   {fmtSol(falseBuyPriceSol)} · Sell:{" "}
+//                   {fmtSol(falseSellPriceSol)}
+//                 </div>
+
+//                 {fmtSpread(falseSpreadPct) && (
+//                   <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">
+//                     Spread: {fmtSpread(falseSpreadPct)}
+//                   </div>
+//                 )}
+//               </div>
+
+//               <div className="text-[11px] px-2 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">
+//                 TRADE
+//               </div>
+//             </div>
+
+//             <div className="grid grid-cols-2 gap-2">
+//               <a
+//                 href={jupiterSwapUrl(falseMint)}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 className="flex items-center justify-center rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-rose-100 dark:bg-transparent dark:border-rose-800 dark:hover:bg-rose-900/30"
+//               >
+//                 Jupiter
+//               </a>
+
+//               <a
+//                 href={raydiumSwapUrl({ outputMint: falseMint })}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 className="flex items-center justify-center rounded-xl border border-rose-300 bg-white px-4 py-2.5 text-sm font-medium hover:bg-rose-100 dark:bg-transparent dark:border-rose-800 dark:hover:bg-rose-900/30"
+//               >
+//                 Raydium
+//               </a>
+//             </div>
+//           </div>
+//         )}
+//       </div>
+
+//       {(trueMint || falseMint) && (
+//         <div className="mt-3 rounded-2xl border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-800 dark:bg-gray-950/30">
+//           <div className="mb-2 flex items-center justify-between gap-2">
+//             <div>
+//               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
+//                 Add Liquidity
+//               </div>
+//               <div className="text-[11px] text-gray-500 dark:text-gray-400">
+//                 Open Raydium liquidity pools.
+//               </div>
+//             </div>
+//           </div>
+
+//           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+//             {trueMint && (
+//               <a
+//                 href={`https://raydium.io/liquidity-pools/?token=${trueMint}`}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 className="flex items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50 dark:border-emerald-900/50 dark:bg-gray-950/40 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+//               >
+//                 Raydium's True Pools
+//               </a>
+//             )}
+
+//             {falseMint && (
+//               <a
+//                 href={`https://raydium.io/liquidity-pools/?token=${falseMint}`}
+//                 target="_blank"
+//                 rel="noopener noreferrer"
+//                 className="flex items-center justify-center rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm font-medium text-rose-700 transition hover:bg-rose-50 dark:border-rose-900/50 dark:bg-gray-950/40 dark:text-rose-300 dark:hover:bg-rose-950/30"
+//               >
+//                 Raydium's False Pools
+//               </a>
+//             )}
+//           </div>
+//         </div>
+//       )}
+
+//       <div className="mt-2 flex flex-wrap gap-3 text-xs">
+//         {truePool?.url && (
+//           <a
+//             className="text-indigo-600 hover:underline dark:text-indigo-300"
+//             href={truePool.url}
+//             target="_blank"
+//             rel="noreferrer"
+//           >
+//             View TRUE pool
+//           </a>
+//         )}
+
+//         {falsePool?.url && (
+//           <a
+//             className="text-indigo-600 hover:underline dark:text-indigo-300"
+//             href={falsePool.url}
+//             target="_blank"
+//             rel="noreferrer"
+//           >
+//             View FALSE pool
+//           </a>
+//         )}
+//       </div>
+
+//       <div
+//         className={[
+//           "mt-3 grid gap-3",
+//           hasBoth ? "grid-cols-1 lg:grid-cols-2" : "grid-cols-1",
+//         ].join(" ")}
+//       >
+//         {hasTrue && (
+//           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950/40">
+//             <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
+//               <span>TRUE chart</span>
+//               <span className="text-emerald-600 dark:text-emerald-400">
+//                 Mid {fmtSol(truePriceSol)}
+//               </span>
+//             </div>
+
+//             <iframe
+//               title="GeckoTerminal TRUE"
+//               src={`https://www.geckoterminal.com/solana/pools/${truePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
+//               frameBorder={0}
+//               allow="clipboard-write"
+//               allowFullScreen={false}
+//               className={[
+//                 "block w-full",
+//                 hasBoth ? "h-[340px] md:h-[400px]" : "h-[420px] md:h-[520px]",
+//                 "bg-white dark:bg-gray-950",
+//               ].join(" ")}
+//             />
+//           </div>
+//         )}
+
+//         {hasFalse && (
+//           <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-950/40">
+//             <div className="flex items-center justify-between border-b border-gray-100 px-3 py-2 text-xs font-semibold text-gray-700 dark:border-gray-800 dark:text-gray-200">
+//               <span>FALSE chart</span>
+//               <span className="text-rose-600 dark:text-rose-400">
+//                 Mid {fmtSol(falsePriceSol)}
+//               </span>
+//             </div>
+
+//             <iframe
+//               title="GeckoTerminal FALSE"
+//               src={`https://www.geckoterminal.com/solana/pools/${falsePool.pairAddress}?embed=1&info=0&swaps=0&light_chart=0&chart_type=price&resolution=1d&bg_color=f1f5f9`}
+//               frameBorder={0}
+//               allow="clipboard-write"
+//               allowFullScreen={false}
+//               className={[
+//                 "block w-full",
+//                 hasBoth ? "h-[340px] md:h-[400px]" : "h-[420px] md:h-[520px]",
+//                 "bg-white dark:bg-gray-950",
+//               ].join(" ")}
+//             />
+//           </div>
+//         )}
+//       </div>
+//     </div>
+//   );
+// }
