@@ -13,10 +13,25 @@ function isBlockhashError(e) {
 }
 
 async function confirmByLatest(conn, sig, latest) {
-  return conn.confirmTransaction(
-    { signature: sig, blockhash: latest.blockhash, lastValidBlockHeight: latest.lastValidBlockHeight },
+  const confirmation = await conn.confirmTransaction(
+    {
+      signature: sig,
+      blockhash: latest.blockhash,
+      lastValidBlockHeight:
+        latest.lastValidBlockHeight,
+    },
     "confirmed"
   );
+
+  if (confirmation.value.err) {
+    throw new Error(
+      `Transaction failed: ${JSON.stringify(
+        confirmation.value.err
+      )}`
+    );
+  }
+
+  return confirmation;
 }
 
 export async function sendAndConfirmSafe({ conn, wallet, tx, label, simulate }) {

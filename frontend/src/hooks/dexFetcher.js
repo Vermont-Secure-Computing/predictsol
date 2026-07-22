@@ -5,11 +5,30 @@ import {
   getPoolsByMint,
   getPoolsFromGecko,
   getRaydiumQuote,
-  getRaydiumBaseOutQuote
+  getRaydiumBaseOutQuote,
+  getRaydiumPrice,
+  getBirdeyeOhlcv,
+  getRaydiumMidPrice,
 } from "../utils/getPools";
 
-const HELIUS_RPC =
-  "https://mainnet.helius-rpc.com/?api-key=53dd1693-43cc-4545-880e-74fa732ab766";
+const HELIUS_RPC = "https://mainnet.helius-rpc.com/?api-key=53dd1693-43cc-4545-880e-74fa732ab766";
+
+const PRICE_MODES = {
+  BUY: "buy",
+  SELL: "sell",
+  MID: "mid",
+};
+
+const DEFAULT_PRICE_MODE = PRICE_MODES.MID;
+
+function selectPrice(price, mode = DEFAULT_PRICE_MODE) {
+  if (!price) return null;
+
+  if (mode === PRICE_MODES.BUY) return price.buyPriceNative ?? price.priceNative ?? null;
+  if (mode === PRICE_MODES.SELL) return price.sellPriceNative ?? price.priceNative ?? null;
+
+  return price.priceNative ?? null; // mid
+}
 
 // ---- helpers ----
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -170,13 +189,35 @@ async function resolveBestPoolRoundRobin({ mint, rpcUrl = HELIUS_RPC, maxRounds 
   return fallbackPool;
 }
 
-export function useBestPools({ trueMint, falseMint, refreshMs = 0 }) {
+
+export function useBestPools({
+  trueMint,
+  falseMint,
+  refreshMs = 0,
+  priceMode = DEFAULT_PRICE_MODE,
+}) {
+
   const [state, setState] = useState({
     loading: true,
     err: "",
     truePool: null,
     falsePool: null,
+
+    truePriceSol: null,
+    falsePriceSol: null,
+
+    trueBuyPriceSol: null,
+    trueSellPriceSol: null,
+    trueSpreadPct: null,
+
+    falseBuyPriceSol: null,
+    falseSellPriceSol: null,
+    falseSpreadPct: null,
+
+    trueOhlcv: [],
+    falseOhlcv: [],
   });
+  
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +232,13 @@ export function useBestPools({ trueMint, falseMint, refreshMs = 0 }) {
         const [truePool, falsePool] = await Promise.all([
           resolveBestPoolRoundRobin({ mint: trueMint, maxRounds: 3 }),
           resolveBestPoolRoundRobin({ mint: falseMint, maxRounds: 3 }),
+        ]);
+
+        const [truePrice, falsePrice, trueOhlcv, falseOhlcv] = await Promise.all([
+          trueMint ? safeCall(() => getRaydiumMidPrice({ mint: trueMint })) : null,
+          falseMint ? safeCall(() => getRaydiumMidPrice({ mint: falseMint })) : null,
+          trueMint ? safeCall(() => getBirdeyeOhlcv({ mint: trueMint }), []) : [],
+          falseMint ? safeCall(() => getBirdeyeOhlcv({ mint: falseMint }), []) : [],
         ]);
 
 
@@ -254,6 +302,24 @@ export function useBestPools({ trueMint, falseMint, refreshMs = 0 }) {
             err: "",
             truePool,
             falsePool,
+
+            priceMode,
+
+            truePriceSol: selectPrice(truePrice, priceMode),
+            falsePriceSol: selectPrice(falsePrice, priceMode),
+
+            trueBuyPriceSol: truePrice?.buyPriceNative ?? null,
+            trueSellPriceSol: truePrice?.sellPriceNative ?? null,
+            trueMidPriceSol: truePrice?.priceNative ?? null,
+            trueSpreadPct: truePrice?.spreadPct ?? null,
+
+            falseBuyPriceSol: falsePrice?.buyPriceNative ?? null,
+            falseSellPriceSol: falsePrice?.sellPriceNative ?? null,
+            falseMidPriceSol: falsePrice?.priceNative ?? null,
+            falseSpreadPct: falsePrice?.spreadPct ?? null,
+
+            trueOhlcv,
+            falseOhlcv,
           });
         }
       } catch (e) {
@@ -279,7 +345,7 @@ export function useBestPools({ trueMint, falseMint, refreshMs = 0 }) {
       cancelled = true;
       if (timer) clearInterval(timer);
     };
-  }, [trueMint, falseMint, refreshMs]);
+  }, [trueMint, falseMint, refreshMs, priceMode]);
 
   return state;
 }

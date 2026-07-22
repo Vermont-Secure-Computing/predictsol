@@ -134,37 +134,141 @@ export async function getRaydiumBaseOutQuote({
     return json.data;
 }
 
-// Add this to getPools.js
-export async function getRaydiumPrice({
-    inputMint = WSOL,
-    outputMint,
-    amountLamports = 1_000_000_000, // 1 SOL for better precision
-}) {
-    if (!outputMint) return null;
+// // Add this to getPools.js
+// export async function getRaydiumPrice({
+//     inputMint = WSOL,
+//     outputMint,
+//     amountLamports = 1_000_000_000, // 1 SOL for better precision
+// }) {
+//     if (!outputMint) return null;
 
-    try {
-        const quote = await getRaydiumQuote({
-            inputMint,
-            outputMint,
-            amountLamports,
-        });
+//     try {
+//         const quote = await getRaydiumQuote({
+//             inputMint,
+//             outputMint,
+//             amountLamports,
+//         });
 
-        if (!quote) return null;
+//         if (!quote) return null;
 
-        // Calculate price: outputAmount / inputAmount (in SOL)
-        const priceInSol = Number(quote.outputAmount) / Number(amountLamports);
+//         // Calculate price: outputAmount / inputAmount (in SOL)
+//         const priceInSol = Number(quote.outputAmount) / Number(amountLamports);
         
-        return {
-            priceInSol,
-            outputAmount: quote.outputAmount,
-            inputAmount: amountLamports,
-            poolIds: quote.routePlan?.map(r => r.poolId) || [],
-            priceImpactPct: quote.priceImpactPct,
-        };
-    } catch (error) {
-        console.error("Failed to get Raydium price:", error);
-        return null;
-    }
+//         return {
+//             priceInSol,
+//             outputAmount: quote.outputAmount,
+//             inputAmount: amountLamports,
+//             poolIds: quote.routePlan?.map(r => r.poolId) || [],
+//             priceImpactPct: quote.priceImpactPct,
+//         };
+//     } catch (error) {
+//         console.error("Failed to get Raydium price:", error);
+//         return null;
+//     }
+// }
+export async function getRaydiumPrice({
+  inputMint = WSOL,
+  outputMint,
+  outputAmount = 1_000_000_000,
+}) {
+  if (!outputMint) return null;
+
+  try {
+    const quote = await getRaydiumBaseOutQuote({
+      inputMint,
+      outputMint,
+      outputAmount,
+    });
+
+    const inputAmount = Number(quote?.inputAmount || 0);
+
+    if (!inputAmount) return null;
+
+    return {
+      priceNative: inputAmount / 1_000_000_000,
+      inputAmount: quote.inputAmount,
+      outputAmount: quote.outputAmount,
+      poolIds: quote.routePlan?.map((r) => r.poolId) || [],
+      priceImpactPct: quote.priceImpactPct,
+      raw: quote,
+    };
+  } catch (error) {
+    console.warn("Failed to get Raydium price:", error?.message || error);
+    return null;
+  }
+}
+
+export async function getRaydiumSellPrice({
+  inputMint,
+  outputMint = WSOL,
+  inputAmount = 1_000_000_000,
+}) {
+  if (!inputMint) return null;
+
+  try {
+    const quote = await getRaydiumQuote({
+      inputMint,
+      outputMint,
+      amountLamports: inputAmount,
+    });
+
+    const outputAmount = Number(quote?.outputAmount || 0);
+
+    if (!outputAmount) return null;
+
+    return {
+      priceNative: outputAmount / 1_000_000_000,
+      inputAmount,
+      outputAmount: quote.outputAmount,
+      poolIds: quote.routePlan?.map((r) => r.poolId) || [],
+      priceImpactPct: quote.priceImpactPct,
+      raw: quote,
+    };
+  } catch (error) {
+    console.warn("Failed to get Raydium sell price:", error?.message || error);
+    return null;
+  }
+}
+
+export async function getRaydiumMidPrice({
+  mint,
+  tokenAmount = 1_000_000_000,
+}) {
+  if (!mint) return null;
+
+  const [buy, sell] = await Promise.all([
+    getRaydiumPrice({
+      outputMint: mint,
+      outputAmount: tokenAmount,
+    }),
+    getRaydiumSellPrice({
+      inputMint: mint,
+      inputAmount: tokenAmount,
+    }),
+  ]);
+
+  const buyPrice = Number(buy?.priceNative || 0);
+  const sellPrice = Number(sell?.priceNative || 0);
+
+  if (!buyPrice && !sellPrice) return null;
+
+  const midPrice =
+    buyPrice && sellPrice
+      ? (buyPrice + sellPrice) / 2
+      : buyPrice || sellPrice;
+
+  return {
+    priceNative: midPrice,
+    buyPriceNative: buyPrice || null,
+    sellPriceNative: sellPrice || null,
+    spreadNative: buyPrice && sellPrice ? buyPrice - sellPrice : null,
+    spreadPct:
+      buyPrice && sellPrice && midPrice
+        ? ((buyPrice - sellPrice) / midPrice) * 100
+        : null,
+    buy,
+    sell,
+  };
 }
 
 
@@ -203,4 +307,33 @@ export async function getPoolsFromGecko(tokenMint) {
       volumeUsd: a.volume_usd || null,
     };
   });
+}
+
+
+export async function getBirdeyeOhlcv({
+  mint,
+  quoteMint = WSOL,
+  type = "5m",
+}) {
+  if (!mint) return [];
+
+  const timeTo = Math.floor(Date.now() / 1000);
+  const timeFrom = timeTo - 60 * 60 * 24;
+
+  const params = new URLSearchParams({
+    baseAddress: mint,
+    quoteAddress: quoteMint,
+    type,
+    timeFrom: String(timeFrom),
+    timeTo: String(timeTo),
+  });
+
+  const res = await fetch(`/api/birdeye/ohlcv?${params.toString()}`);
+  const json = await res.json();
+
+  if (!res.ok || !json?.success) {
+    throw new Error(json?.error || `Birdeye OHLCV failed: ${res.status}`);
+  }
+
+  return json.data || [];
 }
