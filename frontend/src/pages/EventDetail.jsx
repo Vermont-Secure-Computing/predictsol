@@ -25,7 +25,7 @@ import { sendAndConfirmSafe } from "../utils/sendTx";
 import { getConstants } from "../constants";
 
 import { TradeButtons } from "../components/TradeButton";
-import TxHint from "../components/TxHints";
+//import TxHint from "../components/TxHints";
 
 function toBaseUnits(amountStr) {
   const n = Number(amountStr);
@@ -2216,10 +2216,10 @@ export default function EventDetail() {
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
                   Create Liquidity (Deposit SOL → Receive TRUE + FALSE)
                 </div>
-                <TxHint>First buy ~3 Transactions • Later ~1 Transaction</TxHint>
+                {/* <TxHint>First buy ~3 Transactions • Later ~1 Transaction</TxHint>
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 mb-1">
                   Extra transactions are for creating your TRUE/FALSE token accounts.
-                </div>
+                </div> */}
 
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -2293,7 +2293,7 @@ export default function EventDetail() {
                   <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
                     Redeem requires equal amounts of TRUE + FALSE. Example: 1 TRUE + 1 FALSE = 1 SOL.
                   </div>
-                  <TxHint>~1 Transaction</TxHint>
+                  {/* <TxHint>~1 Transaction</TxHint> */}
                   
                   {!walletConnected ? (
                     <div style={{ marginTop: 10, fontSize: 12, color: "#555" }}>
@@ -2408,7 +2408,7 @@ export default function EventDetail() {
                       <span> (no truth question loaded)</span>
                     )}
                   </div>
-                  <TxHint>~1 Transaction</TxHint>
+                  {/* <TxHint>~1 Transaction</TxHint> */}
 
                   <button
                     onClick={getResult}
@@ -2457,7 +2457,7 @@ export default function EventDetail() {
                       <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 10 }}>
                         expected: 1 <b>{winnerLabel(ev)}</b> token = 1 SOL
                       </div>
-                      <TxHint>~1 Transaction</TxHint>
+                      {/* <TxHint>~1 Transaction</TxHint> */}
 
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -2523,7 +2523,7 @@ export default function EventDetail() {
                         You can redeem TRUE or FALSE.
                         {" "}(expected: 1 token = 0.5 SOL)
                       </div>
-                      <TxHint>~1 Transaction</TxHint>
+                      {/* <TxHint>~1 Transaction</TxHint> */}
 
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -2635,7 +2635,7 @@ export default function EventDetail() {
                       </>
                     )}
                   </div>
-                  <TxHint>~1 Transaction</TxHint>
+                  {/* <TxHint>~1 Transaction</TxHint> */}
                   
                   {/* Claim Commission (creator only, after betting ends) */}
                   {walletConnected && isCreator(ev) && (
@@ -2691,7 +2691,7 @@ export default function EventDetail() {
                       {toDateTime(sweepAfterTs)}
                     </strong>.
                   </p>
-                  <TxHint>~1 Transaction</TxHint>
+                  {/* <TxHint>~1 Transaction</TxHint> */}
 
                   {showSweepButton &&
                     <>
@@ -2719,7 +2719,7 @@ export default function EventDetail() {
                   <p className="text-sm text-red-800 mb-2">
                     This event is fully settled and can be deleted.
                   </p>
-                  <TxHint>~1 Transaction</TxHint>
+                  {/* <TxHint>~1 Transaction</TxHint> */}
 
                   <button
                     onClick={handleDeleteEvent}

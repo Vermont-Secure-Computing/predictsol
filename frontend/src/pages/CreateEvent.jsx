@@ -28,7 +28,7 @@ import {
 import { sendAndConfirmSafe } from "../utils/sendTx";
 import { addDays, maxDatetimeLocal } from "../utils/dateHelpers";
 import { getConstants } from "../constants";
-import TxHint from "../components/TxHints";
+//import TxHint from "../components/TxHints";
 
 
 export default function CreateEvent() {
@@ -653,11 +653,11 @@ export default function CreateEvent() {
           >
             {busy ? "Creating..." : "Create Event"}
           </button>
-          <TxHint>One wallet confirmation creates the oracle question, event, vault, and TRUE/FALSE tokens.</TxHint>
+          {/* <TxHint>One wallet confirmation creates the oracle question, event, vault, and TRUE/FALSE tokens.</TxHint>
           <div className="text-[11px] text-gray-500 dark:text-gray-400">
             First-time counter initialization is included automatically
             in the same transaction.
-          </div>
+          </div> */}
 
     
           {/* Message */}
