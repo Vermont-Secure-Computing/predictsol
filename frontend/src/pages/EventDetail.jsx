@@ -204,7 +204,6 @@ export default function EventDetail() {
   const [postRedeemErr, setPostRedeemErr] = useState("");
   const [postRedeemSig, setPostRedeemSig] = useState("");
   const [postRedeemSide, setPostRedeemSide] = useState("TRUE");
-  const postRedeemLockRef = useRef(false);
 
   const [userToken, setUserToken] = useState({
     trueAta: null,
@@ -227,6 +226,31 @@ export default function EventDetail() {
   // state for sweep unclaimed SOL confirmation modal
   const [showSweepConfirm, setShowSweepConfirm] = useState(false);
   const [sweeping, setSweeping] = useState(false);
+  const [sweepErr, setSweepErr] = useState("");
+  const [sweepSig, setSweepSig] = useState("");
+
+  // transaction locking
+  // prevents double submit even before setState updates
+  const transactionLockRef = useRef(null);
+
+  function acquireTransactionLock(action) {
+    if (transactionLockRef.current) {
+      return false;
+    }
+
+    transactionLockRef.current = action;
+    return true;
+  }
+
+  function releaseTransactionLock(action) {
+    if (transactionLockRef.current === action) {
+      transactionLockRef.current = null;
+    }
+  }
+
+  // Deleting event
+  const [deletingEvent, setDeletingEvent] = useState(false);
+  const [deleteEventErr, setDeleteEventErr] = useState("");
 
   // copy button in mints
   const [copied, setCopied] = useState("");
@@ -238,11 +262,6 @@ export default function EventDetail() {
       setCopied("");
     }, 1500);
   };
-
-
-  // prevents double submit even before setState updates
-  const buyLockRef = useRef(false);
-  const redeemLockRef = useRef(false);
 
   const walletConnected = !!wallet?.publicKey && wallet.connected;
 
@@ -272,6 +291,23 @@ export default function EventDetail() {
 
   const VAULT_MIN = vaultMin ?? 0;
   const DUST_TOL = 10;
+
+
+  /**
+   * 
+   * Helper to build Solscan url dynamically
+   * depending on network: devnet and mainnet
+   * 
+   */
+  function getSolscanUrl(type, value) {
+    if (!value) return "#";
+
+    const baseUrl = `https://solscan.io/${type}/${value}`;
+
+    return constants.NETWORK === "devnet"
+      ? `${baseUrl}?cluster=devnet`
+      : baseUrl;
+  }
   
  
   async function loadUserTokenState(evData) {
@@ -683,10 +719,10 @@ export default function EventDetail() {
       return;
     }
 
-    if (!program) return;
-    if (buyLockRef.current) return;
-
-    buyLockRef.current = true;
+    if (!program) {
+      setMintErr("Program is not ready.");
+      return;
+    }
 
     setMintErr("");
     setMintSig("");
@@ -694,40 +730,29 @@ export default function EventDetail() {
     const amountNum = Number(solAmountStr);
 
     if (!Number.isFinite(amountNum) || amountNum <= 0) {
-      buyLockRef.current = false;
       setMintErr("Enter a valid SOL amount > 0");
       return;
     }
 
     if (amountNum < constants.MIN_BUY_SOL) {
-      buyLockRef.current = false;
-      setMintErr(
-        `Minimum buy amount is ${constants.MIN_BUY_SOL} SOL`
-      );
+      setMintErr(`Minimum buy amount is ${constants.MIN_BUY_SOL} SOL`);
       return;
     }
 
     if (!isBettingActive(ev)) {
-      buyLockRef.current = false;
-      setMintErr(
-        "Betting period ended. Buying is disabled."
-      );
+      setMintErr("Betting period ended. Buying is disabled.");
       return;
     }
 
-    if (!ev?.truthQuestion) {
-      buyLockRef.current = false;
-      setMintErr(
-        "This event is not linked to a Truth Network question."
-      );
+    const truthQuestionPk = asPubkey(ev?.truthQuestion);
+
+    if (!truthQuestionPk) {
+      setMintErr("This event is not linked to a Truth Network question.");
       return;
     }
 
     if (!truthQ) {
-      buyLockRef.current = false;
-      setMintErr(
-        "Truth Network question not loaded yet. Click Refresh and try again."
-      );
+      setMintErr("Truth Network question not loaded yet. Click Refresh and try again.");
       return;
     }
 
@@ -738,10 +763,15 @@ export default function EventDetail() {
     );
 
     if (!truthVaultPk) {
-      buyLockRef.current = false;
-      setMintErr(
-        "Truth vault address missing or invalid."
-      );
+      setMintErr("Truth vault address missing or invalid.");
+      return;
+    }
+
+    /*
+    * Acquire the page-wide lock only after validation.
+    */
+    if (!acquireTransactionLock("buyPositionsWithFee")) {
+      setMintErr("Another transaction is already being processed.");
       return;
     }
 
@@ -801,7 +831,7 @@ export default function EventDetail() {
             falseMint,
             userTrueAta,
             userFalseAta,
-            truthNetworkQuestion: ev.truthQuestion,
+            truthNetworkQuestion: truthQuestionPk,
             truthNetworkVault: truthVaultPk,
             tokenProgram: TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
@@ -842,10 +872,7 @@ export default function EventDetail() {
         instructionCount: tx.instructions.length,
       });
 
-      const sig = await sendAndConfirm(
-        tx,
-        "buyPositionsWithFee"
-      );
+      const sig = await sendAndConfirm(tx, "buyPositionsWithFee");
 
       setMintSig(sig);
 
@@ -867,7 +894,7 @@ export default function EventDetail() {
       setMintErr(e?.message || String(e));
     } finally {
       setMinting(false);
-      buyLockRef.current = false;
+      releaseTransactionLock("buyPositionsWithFee");
     }
   }
 
@@ -878,29 +905,28 @@ export default function EventDetail() {
       return;
     }
 
-    if (!program) return;
-    if (redeemLockRef.current) return;
-
-    redeemLockRef.current = true;
+    if (!program) {
+      setRedeemErr("Program is not ready");
+      return;
+    }
 
     setRedeemErr("");
     setRedeemSig("");
 
     if (!isBettingActive(ev)) {
-      redeemLockRef.current = false;
-      setRedeemErr(
-        "Betting period ended. Pair redemption is disabled."
-      );
+      setRedeemErr("Betting period ended. Pair redemption is disabled.");
       return;
     }
 
     const amount = toBaseUnits(redeemAmountStr);
 
     if (!amount) {
-      redeemLockRef.current = false;
-      setRedeemErr(
-        "Enter a valid amount greater than 0. Example: 0.1"
-      );
+      setRedeemErr("Enter a valid amount greater than 0. Example: 0.1");
+      return;
+    }
+
+    if (!acquireTransactionLock("redeemPairWhileActive")) {
+      setRedeemErr("Another transaction is already being processed.");
       return;
     }
 
@@ -969,16 +995,20 @@ export default function EventDetail() {
 
       const redeemAmountBase = BigInt( amount.toString() );
 
+      if (trueBalanceBase <= 0n) {
+        throw new Error("You do not have any TRUE tokens to redeem.");
+      }
+
+      if (falseBalanceBase <= 0n) {
+        throw new Error("You do not have any FALSE tokens to redeem.");
+      }
+
       if (redeemAmountBase > trueBalanceBase) {
-        throw new Error(
-          "Redeem amount is greater than your TRUE balance."
-        );
+        throw new Error("Redeem amount is greater than your TRUE balance.");
       }
 
       if (redeemAmountBase > falseBalanceBase) {
-        throw new Error(
-          "Redeem amount is greater than your FALSE balance."
-        );
+        throw new Error("Redeem amount is greater than your FALSE balance.");
       }
 
       /*
@@ -1051,7 +1081,7 @@ export default function EventDetail() {
       );
     } finally {
       setRedeeming(false);
-      redeemLockRef.current = false;
+      releaseTransactionLock("redeemPairWhileActive");
     }
   }
 
@@ -1061,19 +1091,16 @@ export default function EventDetail() {
       return;
     }
 
-    if (!program) return;
-    if (postRedeemLockRef.current) return;
-
-    postRedeemLockRef.current = true;
+    if (!program){
+      setPostRedeemErr("Program is not ready.");
+      return;
+    }
 
     setPostRedeemErr("");
     setPostRedeemSig("");
 
     if (!ev?.resolved) {
-      postRedeemLockRef.current = false;
-      setPostRedeemErr(
-        "Event is not finalized yet."
-      );
+      setPostRedeemErr("Event is not finalized yet.");
       return;
     }
 
@@ -1083,20 +1110,19 @@ export default function EventDetail() {
     const hasValidWinner = resultStatus === RESULT.RESOLVED_WINNER && (winningOption === 1 || winningOption === 2);
 
     if (!hasValidWinner) {
-      postRedeemLockRef.current = false;
-      setPostRedeemErr(
-        "This event has no winning token. Use no-winner redemption instead."
-      );
+      setPostRedeemErr("This event has no winning token. Use no-winner redemption instead.");
       return;
     }
 
     const amount = toBaseUnits(amountStr);
 
     if (!amount) {
-      postRedeemLockRef.current = false;
-      setPostRedeemErr(
-        "Enter a valid amount greater than 0. Example: 0.1"
-      );
+      setPostRedeemErr("Enter a valid amount greater than 0. Example: 0.1");
+      return;
+    }
+
+    if (!acquireTransactionLock("redeemWinnerAfterFinal")) {
+      setPostRedeemErr("Another transaction is already being processed.");
       return;
     }
 
@@ -1158,8 +1184,7 @@ export default function EventDetail() {
         throw new Error( `You do not have any ${winnerSide} tokens to redeem.` );
       }
 
-      if ( redeemAmountBase > winnerBalanceBase
-      ) {
+      if ( redeemAmountBase > winnerBalanceBase) {
         throw new Error( `Redeem amount is greater than your ${winnerSide} balance.` );
       }
 
@@ -1228,7 +1253,7 @@ export default function EventDetail() {
       );
     } finally {
       setPostRedeeming(false);
-      postRedeemLockRef.current = false;
+      releaseTransactionLock("redeemWinnerAfterFinal");
     }
   }
 
@@ -1238,16 +1263,15 @@ export default function EventDetail() {
       return;
     }
 
-    if (!program) return;
-    if (postRedeemLockRef.current) return;
-
-    postRedeemLockRef.current = true;
+    if (!program){
+      setPostRedeemErr("Program is not ready.");
+      return;
+    }
 
     setPostRedeemErr("");
     setPostRedeemSig("");
 
     if (!ev?.resolved) {
-      postRedeemLockRef.current = false;
       setPostRedeemErr("Event is not finalized yet.");
       return;
     }
@@ -1261,30 +1285,26 @@ export default function EventDetail() {
     ];
 
     if (!noWinnerStatuses.includes(resultStatus)) {
-      postRedeemLockRef.current = false;
-      setPostRedeemErr(
-        "This event has a winner. Use winner redemption instead."
-      );
+      setPostRedeemErr("This event has a winner. Use winner redemption instead.");
       return;
     }
 
     const amount = toBaseUnits(amountStr);
 
     if (!amount) {
-      postRedeemLockRef.current = false;
-      setPostRedeemErr(
-        "Enter a valid amount greater than 0. Example: 0.1"
-      );
+      setPostRedeemErr("Enter a valid amount greater than 0. Example: 0.1");
       return;
     }
 
     const side = String( sideStr || "" ).toUpperCase();
 
     if (side !== "TRUE" && side !== "FALSE") {
-      postRedeemLockRef.current = false;
-      setPostRedeemErr(
-        'Invalid side. Use "TRUE" or "FALSE".'
-      );
+      setPostRedeemErr('Invalid side. Use "TRUE" or "FALSE".');
+      return;
+    }
+
+    if (!acquireTransactionLock("redeemNoWinnerAfterFinal")) {
+      setPostRedeemErr("Another transaction is already being processed.");
       return;
     }
 
@@ -1416,7 +1436,7 @@ export default function EventDetail() {
       );
     } finally {
       setPostRedeeming(false);
-      postRedeemLockRef.current = false;
+      releaseTransactionLock("redeemNoWinnerAfterFinal");
     }
   }
 
@@ -1455,6 +1475,12 @@ export default function EventDetail() {
       setFinalizeErr("Connect wallet to finalize and store the result.");
       return;
     }
+
+    if (!program) { 
+      setFinalizeErr("Program is not ready.");
+      return;
+    }
+
     setFinalizeErr("");
     setFinalizeSig("");
 
@@ -1481,20 +1507,33 @@ export default function EventDetail() {
       return;
     }
 
-    const v1 = bnToNum(truthQ.votes_option_1 ?? truthQ.votesOption1);
-    const v2 = bnToNum(truthQ.votes_option_2 ?? truthQ.votesOption2);
-    
+    const truthQuestionPk = asPubkey(ev?.truthQuestion);
 
+    if (!truthQuestionPk) {
+      setFinalizeErr("This event is not linked to a valid Truth Network question.");
+      return;
+    }
+
+    /*
+    * Acquire only after validation succeeds.
+    */
+    if (!acquireTransactionLock("fetchAndStoreWinner")) {
+      setFinalizeErr("Another transaction is already being processed.");
+      return;
+    }
+    
     setFinalizing(true);
+
     try {
       const eventPk = new PublicKey(eventPda);
 
-      const truthQuestionPk = ev.truthQuestion;
-      if (!truthQuestionPk) throw new Error("This event is not linked to a Truth Network question.");
-
       const [collateralVault] = await findCollateralVaultPda(eventPk);
 
-      const tx = await program.methods
+      /*
+     * One instruction inside one transaction.
+     * This results in one wallet confirmation.
+     */
+    const tx = await program.methods
         .fetchAndStoreWinner()
         .accounts({
           event: eventPk,
@@ -1505,15 +1544,35 @@ export default function EventDetail() {
         })
         .transaction();
 
+      console.log( "[fetchAndStoreWinner] prepared:",
+        {
+          event:eventPk.toBase58(),
+          collateralVault: collateralVault.toBase58(),
+          truthNetworkQuestion: truthQuestionPk.toBase58(),
+          truthNetworkProgram: constants.TRUTH_NETWORK_PROGRAM_ID.toBase58(),
+          instructionCount: tx.instructions.length,
+        }
+      );
+
+
+
       const sig = await sendAndConfirm(tx, "fetchAndStoreWinner");
       setFinalizeSig(sig);
 
       await load();
     } catch (e) {
       console.error("[getResult] failed:", e);
+      if (typeof e?.getLogs ==="function") {
+        try {
+          console.log("[fetchAndStoreWinner] logs:", await e.getLogs());
+        } catch {
+          // Program logs were unavailable.
+        }
+      }
       setFinalizeErr(e?.message || String(e));
     } finally {
       setFinalizing(false);
+      releaseTransactionLock("fetchAndStoreWinner");
     }
   }
 
@@ -1559,6 +1618,15 @@ export default function EventDetail() {
       return;
     }
 
+    /**
+     * Acquire the lock only after validation to avoid manually
+     * releasing it from every validation branch
+     */
+    if (!acquireTransactionLock("claimCreatorCommission")) {
+      setClaimCreatorErr("Another transaction is already being processed.");
+      return;
+    }
+
     setClaimingCreator(true);
     try {
       const eventPk = new PublicKey(eventPda);
@@ -1574,20 +1642,85 @@ export default function EventDetail() {
         })
         .transaction();
 
+      console.log( "[claimCreatorCommission] prepared:",
+        {
+          creator: wallet.publicKey.toBase58(),
+          event: eventPk.toBase58(),
+          collateralVault: collateralVault.toBase58(),
+          pendingCommissionLamports: pending.toString(),
+          instructionCount: tx.instructions.length,
+        }
+      );
+
       const sig = await sendAndConfirm(tx, "claimCreatorCommission");
       setClaimCreatorSig(sig);
       await load();
     } catch (e) {
       console.error("[claimCreatorCommission] failed:", e);
+
+      if (typeof e?.getLogs === "function") {
+        try {
+          console.log(
+            "[claimCreatorCommission] logs:",
+            await e.getLogs()
+          );
+        } catch {
+          // Program logs were unavailable.
+        }
+      }
+
       setClaimCreatorErr(e?.message || String(e));
     } finally {
       setClaimingCreator(false);
+      releaseTransactionLock("claimCreatorCommission");
     }
   }
 
   async function handleSweepUnclaimed() {
+    setSweepErr("");
+    setSweepSig("");
+
+    if (!walletConnected) {
+      setSweepErr("[sweepUnclaimedToHouse] Connect wallet first.");
+      return;
+    }
+
+    if (!program) {
+      setSweepErr("[sweepUnclaimedToHouse] Program is not ready.");
+      return;
+    }
+
+    if (!ev?.resolved) {
+      setSweepErr("[sweepUnclaimedToHouse] Event is not finalized.");
+      return;
+    }
+
+    if (!sweepReady) {
+      setSweepErr("[sweepUnclaimedToHouse] Sweep is not available yet.");
+      return;
+    }
+
+    if (!vaultHasSweepable) {
+      setSweepErr("[sweepUnclaimedToHouse] Nothing is available to sweep.");
+      return;
+    }
+
+    if (!creatorCommissionZero) {
+      setSweepErr("[sweepUnclaimedToHouse] Creator commission must be claimed first.");
+      return;
+    }
+
+    /*
+    * Acquire only after all validation succeeds.
+    */
+    if (!acquireTransactionLock("sweepUnclaimedToHouse")) {
+      setSweepErr("[sweepUnclaimedToHouse] Another transaction is already being processed.");
+      return;
+    }
+
+    setSweeping(true);
+
     try {
-      if (!program) throw new Error("Program not ready");
       const eventPk = new PublicKey(eventPda);
       const [collateralVault] = await findCollateralVaultPda(eventPk);
 
@@ -1600,15 +1733,85 @@ export default function EventDetail() {
         })
         .transaction();
 
-      await sendAndConfirm(tx, "sweepUnclaimedToHouse");
+      console.log( "[sweepUnclaimedToHouse] prepared:",
+        {
+          event: eventPk.toBase58(),
+          collateralVault: collateralVault.toBase58(),
+          vaultLamports,
+          vaultMinimumLamports: VAULT_MIN,
+          instructionCount: tx.instructions.length,
+        }
+      );
+
+      const sig = await sendAndConfirm( tx, "sweepUnclaimedToHouse" );
+      console.log( "[sweepUnclaimedToHouse] confirmed:", sig );
+      setSweepSig(sig);
+
+      setShowSweepConfirm(false);
       await load();
     } catch (e) {
-      console.error("[sweep] failed:", e);
-    }
+      
+      console.error( "[sweepUnclaimedToHouse] failed:", e );
+
+      if ( typeof e?.getLogs === "function" ) {
+        try {
+          console.log( "[sweepUnclaimedToHouse] logs:", await e.getLogs() );
+        } catch {
+          // Program logs were unavailable.
+        }
+      }
+      setSweepErr(e?.message || String(e));
+    } finally {
+     setSweeping(false);
+     releaseTransactionLock("sweepUnclaimedToHouse");
+  }
   }
 
 
   async function handleDeleteEvent() {
+    setDeleteEventErr("");
+    if (!walletConnected) {
+      setDeleteEventErr("Connect wallet to delete this event.");
+      return;
+    }
+
+    if (!program) {
+      setDeleteEventErr("Program is not ready.");
+      return;
+    }
+
+    if (!isCreator(ev)) {
+      setDeleteEventErr("Only the event creator can delete this event.");
+      return;
+    }
+
+    if (!ev?.resolved) {
+      setDeleteEventErr("The event must be finalized before it can be deleted.");
+      return;
+    }
+
+    if (!creatorCommissionZero) {
+      setDeleteEventErr("Claim the creator commission before deleting the event.");
+      return;
+    }
+
+    if (!houseCommissionZero) {
+      setDeleteEventErr("The house commission must be settled before deleting the event.");
+      return;
+    }
+
+    if (!canDeleteByPhase) {
+      setDeleteEventErr("The event cannot be deleted yet because funds or outstanding positions remain.");
+      return;
+    }
+
+    if (!acquireTransactionLock("deleteEvent")) {
+      setDeleteEventErr("Another transaction is already being processed.");
+      return;
+    }
+
+    setDeletingEvent(true);
+
     try {
       const eventPk = new PublicKey(eventPda);
       const [collateralVault] = await findCollateralVaultPda(eventPk);
@@ -1623,12 +1826,39 @@ export default function EventDetail() {
         })
         .transaction();
 
-      await sendAndConfirm(tx, "deleteEvent");
+      console.log("[deleteEvent] prepared:",
+        {
+          creator: wallet.publicKey.toBase58(),
+          event: eventPk.toBase58(),
+          collateralVault: collateralVault.toBase58(),
+          vaultLamports,
+          vaultMinimumLamports: VAULT_MIN,
+          outstandingTrue: outstandingTrue.toString(),
+          outstandingFalse: outstandingFalse.toString(),
+          unclaimedSwept: !!ev?.unclaimedSwept,
+          instructionCount: tx.instructions.length,
+        }
+      );
 
-      // optional: redirect back to events list
+      const sig = await sendAndConfirm( tx, "deleteEvent" );
+      console.log( "[deleteEvent] confirmed:", sig );
+
       navigate("/");
     } catch (e) {
       console.error("[deleteEvent] failed:", e);
+
+      if (typeof e?.getLogs === "function") {
+        try {
+          console.log("[deleteEvent] logs:", await e.getLogs() );
+        } catch {
+          // Program logs were unavailable.
+        }
+      }
+
+      setDeleteEventErr(e?.message || String(e));
+    } finally {
+      setDeletingEvent(false);
+      releaseTransactionLock("deleteEvent");
     }
   }
 
@@ -1706,7 +1936,7 @@ export default function EventDetail() {
           <div className="flex items-center gap-2">
             <button
               onClick={load}
-              disabled={loading || minting || redeeming || finalizing || postRedeeming}
+              disabled={loading || minting || redeeming || finalizing || postRedeeming || claimingCreator || sweeping || deletingEvent}
               className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 disabled:opacity-50"
             >
               {loading ? "Refreshing..." : "Refresh"}
@@ -1810,7 +2040,7 @@ export default function EventDetail() {
 
                     {ev.trueMint?.toBase58?.() ? (
                       <a
-                        href={`https://solscan.io/token/${ev.trueMint.toBase58()}`}
+                        href={getSolscanUrl("token", ev.trueMint.toBase58())}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="mt-1 block font-mono text-xs break-all
@@ -1837,7 +2067,7 @@ export default function EventDetail() {
                           type="button"
                           onClick={() => copyToClipboard(ev.falseMint.toBase58())}
                           className="text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400"
-                          title="Copy TRUE mint"
+                          title="Copy FALSE mint"
                         >
                           {copied === ev.falseMint.toBase58() ? (
                             <FaCheck size={13} />
@@ -1850,7 +2080,7 @@ export default function EventDetail() {
 
                     {ev.falseMint?.toBase58?.() ? (
                       <a
-                        href={`https://solscan.io/token/${ev.falseMint.toBase58()}`}
+                        href={getSolscanUrl("token", ev.falseMint.toBase58())}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex-1 font-mono text-xs break-all
@@ -2037,7 +2267,7 @@ export default function EventDetail() {
                   <div style={{ marginTop: 10, fontSize: 13 }}>
                     <b>TX:</b>{" "}
                     <a
-                      href={`https://solscan.io/tx/${mintSig}?cluster=devnet`}
+                      href={getSolscanUrl("tx", mintSig)}
                       target="_blank"
                       rel="noreferrer"
                       className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
@@ -2146,7 +2376,7 @@ export default function EventDetail() {
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <b>TX:</b>{" "}
                       <a 
-                        href={`https://solscan.io/tx/${redeemSig}?cluster=devnet`} 
+                        href={getSolscanUrl("tx", redeemSig)}
                         target="_blank" 
                         rel="noreferrer"
                         className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
@@ -2204,7 +2434,10 @@ export default function EventDetail() {
                   {finalizeSig && (
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <b>TX:</b>{" "}
-                      <a href={`https://solscan.io/tx/${finalizeSig}?cluster=devnet`} target="_blank" rel="noreferrer">
+                      <a 
+                        href={getSolscanUrl("tx", finalizeSig)} 
+                        target="_blank" 
+                        rel="noreferrer">
                         {finalizeSig}
                       </a>
                     </div>
@@ -2376,7 +2609,7 @@ export default function EventDetail() {
                     <div style={{ marginTop: 10, fontSize: 13 }}>
                       <b>TX:</b>{" "}
                       <a 
-                        href={`https://solscan.io/tx/${postRedeemSig}?cluster=devnet`} 
+                        href={getSolscanUrl("tx", postRedeemSig)}
                         target="_blank" 
                         rel="noreferrer"
                         className="text-indigo-600 hover:text-indigo-500 hover:underline break-all dark:text-indigo-300"
@@ -2436,7 +2669,7 @@ export default function EventDetail() {
                         <div style={{ marginTop: 10, fontSize: 13 }}>
                           <b>TX:</b>{" "}
                           <a
-                            href={`https://solscan.io/tx/${claimCreatorSig}?cluster=devnet`}
+                            href={getSolscanUrl("tx", claimCreatorSig)}
                             target="_blank"
                             rel="noreferrer"
                           >
@@ -2463,7 +2696,10 @@ export default function EventDetail() {
                   {showSweepButton &&
                     <>
                       <button
-                        onClick={() => setShowSweepConfirm(true)}
+                        onClick={() => {
+                          setSweepErr("");
+                          setShowSweepConfirm(true)
+                        }}
                         className="
                           mt-2 px-4 py-2 rounded-lg font-medium text-white transition
                           bg-red-600 hover:bg-red-700 active:bg-red-800
@@ -2487,13 +2723,17 @@ export default function EventDetail() {
 
                   <button
                     onClick={handleDeleteEvent}
-                    className="
-                      px-4 py-2 rounded-lg font-medium text-white transition
-                      bg-red-600 hover:bg-red-700 active:bg-red-800
-                    "
+                    disabled={deletingEvent || sweeping || claimingCreator || finalizing || loading}
+                    className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white
+                      hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Delete Event
+                    {deletingEvent ? "Deleting..." : "Delete Event"}
                   </button>
+                  {deleteEventErr && (
+                    <div className="mt-2 text-sm text-red-600">
+                      {deleteEventErr}
+                    </div>
+                  )}
                   
                 </div>
               )}
@@ -2527,7 +2767,11 @@ export default function EventDetail() {
                 Any remaining TRUE/FALSE tokens will no longer be claimable for SOL after this action.
               </div>
 
-
+              {sweepErr && (
+                <div className="mt-3 rounded-lg bg-red-50 p-3 text-sm text-red-600">
+                  {sweepErr}
+                </div>
+              )}
               <div className="mt-5 flex items-center justify-end gap-2">
                 <button
                   type="button"
@@ -2543,15 +2787,7 @@ export default function EventDetail() {
                 <button
                   type="button"
                   disabled={sweeping}
-                  onClick={async () => {
-                    setSweeping(true);
-                    try {
-                      await handleSweepUnclaimed();
-                      setShowSweepConfirm(false);
-                    } finally {
-                      setSweeping(false);
-                    }
-                  }}
+                  onClick={handleSweepUnclaimed}
                   className="px-4 py-2 rounded-lg font-medium text-white transition
                             bg-red-600 hover:bg-red-700 active:bg-red-800
                             disabled:opacity-60 disabled:cursor-not-allowed"
