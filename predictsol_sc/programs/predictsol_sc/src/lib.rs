@@ -24,7 +24,7 @@ use truth_network::accounts::Question;
 pub const HOUSE_WALLET: Pubkey = pubkey!("CQaZgx5jqQrz7c8shCG3vJLiiPGPrawSGhvkgXtGyxL");
 
 
-declare_id!("Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf");
+declare_id!("4cRRBKBMEeNDJXvsHTkEVoEBgnSw4jFTfMXCQwL6n1qt");
 
 // ======================================================
 // PDA SEEDS
@@ -121,26 +121,128 @@ fn create_and_init_spl_mint_pda<'info>(
     signer_seeds: &[&[u8]],
     decimals: u8,
 ) -> Result<()> {
-    if mint.lamports() != 0 {
+    let mint_len = spl_token::state::Mint::LEN;
+    let rent = Rent::get()?;
+    let required_lamports = rent.minimum_balance(mint_len);
+
+    // -------------------------------------------------
+    // Case 1: Already owned by SPL Token Program
+    // -------------------------------------------------
+    if mint.owner == token_program.key {
+        let data = mint.try_borrow_data()?;
+
+        let mint_state = spl_token::state::Mint::unpack(&data)
+            .map_err(|_| error!(PredictError::InvalidMint))?;
+
+        require!(
+            mint_state.is_initialized,
+            PredictError::InvalidMint
+        );
+
+        require!(
+            mint_state.decimals == decimals,
+            PredictError::InvalidMint
+        );
+
+        require!(
+            mint_state.mint_authority
+                == anchor_lang::solana_program::program_option::COption::Some(*mint_authority),
+            PredictError::InvalidMint
+        );
+
         return Ok(());
     }
 
-    let mint_len = spl_token::state::Mint::LEN as u64;
-    let rent = Rent::get()?;
-    let lamports = rent.minimum_balance(mint_len as usize);
+    // -------------------------------------------------
+    // Case 2: Account must still be system-owned
+    //
+    // This includes:
+    // - completely unused PDA (0 lamports)
+    // - attacker-prefunded PDA (e.g. 1 lamport)
+    // -------------------------------------------------
+    require_keys_eq!(
+        *mint.owner,
+        anchor_lang::solana_program::system_program::ID,
+        PredictError::InvalidMint
+    );
 
-    invoke_signed(
-        &system_instruction::create_account(
-            payer.key,
-            mint.key,
-            lamports,
-            mint_len,
-            token_program.key, // SPL Token Program owns the mint
-        ),
-        &[payer.clone(), mint.clone(), system_program.clone()],
-        &[signer_seeds],
-    )?;
+    // -------------------------------------------------
+    // Case 2A: PDA does not exist yet
+    // -------------------------------------------------
+    if mint.lamports() == 0 {
+        invoke_signed(
+            &system_instruction::create_account(
+                payer.key,
+                mint.key,
+                required_lamports,
+                mint_len as u64,
+                token_program.key,
+            ),
+            &[
+                payer.clone(),
+                mint.clone(),
+                system_program.clone(),
+            ],
+            &[signer_seeds],
+        )?;
+    } else {
+        // -------------------------------------------------
+        // Case 2B: PDA was prefunded.
+        //
+        // A system-owned account with lamports already exists,
+        // so create_account() cannot be used directly.
+        // Top it up, allocate space, then assign it to SPL Token.
+        // -------------------------------------------------
 
+        let current_lamports = mint.lamports();
+
+        if current_lamports < required_lamports {
+            let top_up = required_lamports
+                .checked_sub(current_lamports)
+                .ok_or(PredictError::MathOverflow)?;
+
+            anchor_lang::solana_program::program::invoke(
+                &system_instruction::transfer(
+                    payer.key,
+                    mint.key,
+                    top_up,
+                ),
+                &[
+                    payer.clone(),
+                    mint.clone(),
+                    system_program.clone(),
+                ],
+            )?;
+        }
+
+        // A prefunded PDA should still have zero data before allocation.
+        require!(
+            mint.data_len() == 0,
+            PredictError::InvalidMint
+        );
+
+        invoke_signed(
+            &system_instruction::allocate(
+                mint.key,
+                mint_len as u64,
+            ),
+            &[mint.clone()],
+            &[signer_seeds],
+        )?;
+
+        invoke_signed(
+            &system_instruction::assign(
+                mint.key,
+                token_program.key,
+            ),
+            &[mint.clone()],
+            &[signer_seeds],
+        )?;
+    }
+
+    // -------------------------------------------------
+    // Initialize the SPL Mint
+    // -------------------------------------------------
     let cpi = CpiContext::new(
         token_program.clone(),
         InitializeMint {
@@ -149,7 +251,12 @@ fn create_and_init_spl_mint_pda<'info>(
         },
     );
 
-    token::initialize_mint(cpi, decimals, mint_authority, None)?;
+    token::initialize_mint(
+        cpi,
+        decimals,
+        mint_authority,
+        None,
+    )?;
 
     Ok(())
 }
@@ -1227,27 +1334,43 @@ pub mod predictol_sc {
     pub fn sweep_unclaimed_to_house(ctx: Context<SweepUnclaimedToHouse>) -> Result<()> {
         let ev = &mut ctx.accounts.event;
         let now = Clock::get()?.unix_timestamp;
-
+    
         require!(ev.resolved, PredictError::EventNotResolved);
         require!(!ev.unclaimed_swept, PredictError::AlreadySwept);
-
-        // only after X days
+    
+        // Only after the unclaimed redemption window has expired
         require!(
             now >= ev.resolved_at.saturating_add(UNCLAIMED_SWEEP_DELAY_SECS),
             PredictError::SweepNotYetAvailable
         );
-
+    
         let vault_ai = ctx.accounts.collateral_vault.to_account_info();
         let keep = vault_keep_lamports()?;
-
+    
         let vault_lamports = vault_ai.lamports();
-        require!(vault_lamports > keep, PredictError::NothingToSweep);
-
-        let amount = vault_lamports.saturating_sub(keep);
+    
+        // Reserve:
+        // 1. rent-exempt minimum
+        // 2. creator commission that has not yet been claimed
+        let reserved = keep
+            .checked_add(ev.pending_creator_commission)
+            .ok_or(PredictError::MathOverflow)?;
+    
+        require!(
+            vault_lamports > reserved,
+            PredictError::NothingToSweep
+        );
+    
+        // Only expired/unclaimed bettor funds go to the house.
+        // Creator commission remains in the vault.
+        let amount = vault_lamports
+            .checked_sub(reserved)
+            .ok_or(PredictError::MathOverflow)?;
+    
         require!(amount > 0, PredictError::NothingToSweep);
-        
+    
         let vault_bump = ctx.bumps.collateral_vault;
-
+    
         transfer_from_collateral_vault(
             &vault_ai,
             &ctx.accounts.house_treasury.to_account_info(),
@@ -1256,11 +1379,14 @@ pub mod predictol_sc {
             vault_bump,
             amount,
         )?;
-
-        ev.total_collateral_lamports = ev.total_collateral_lamports.saturating_sub(amount);
+    
+        ev.total_collateral_lamports = ev
+            .total_collateral_lamports
+            .saturating_sub(amount);
+    
         ev.unclaimed_swept = true;
         ev.swept_at = now;
-
+    
         Ok(())
     }
 
@@ -1393,10 +1519,32 @@ pub struct InitializeEventCounter<'info> {
 pub struct CreateEventCore<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
-    #[account(mut)]
+
+    #[account(
+        mut,
+        seeds = [
+            SEED_EVENT_COUNTER,
+            creator.key().as_ref()
+        ],
+        bump,
+        constraint = counter.creator == creator.key()
+            @ PredictError::Unauthorized
+    )]
     pub counter: Account<'info, EventCounter>,
-    #[account(init, payer = creator, space = 8 + (296 + 1 + 154), seeds = [SEED_EVENT, creator.key().as_ref(), &counter.count.to_le_bytes()], bump)]
+
+    #[account(
+        init,
+        payer = creator,
+        space = 8 + (296 + 1 + 154),
+        seeds = [
+            SEED_EVENT,
+            creator.key().as_ref(),
+            &counter.count.to_le_bytes()
+        ],
+        bump
+    )]
     pub event: Account<'info, Event>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -1405,7 +1553,11 @@ pub struct CreateEventMints<'info> {
     #[account(mut)]
     pub creator: Signer<'info>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = event.creator == creator.key()
+            @ PredictError::Unauthorized
+    )]
     pub event: Account<'info, Event>,
 
     /// CHECK: PDA signer
@@ -1465,9 +1617,22 @@ pub struct BuyPositionsWithFee<'info> {
     #[account(mut, constraint = event.false_mint == false_mint.key() @ PredictError::InvalidMint)]
     pub false_mint: Account<'info, Mint>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = user_true_ata.owner == user.key()
+            @ PredictError::InvalidTokenAccountOwner,
+        constraint = user_true_ata.mint == true_mint.key()
+            @ PredictError::InvalidTokenAccountMint
+    )]
     pub user_true_ata: Account<'info, TokenAccount>,
-    #[account(mut)]
+    
+    #[account(
+        mut,
+        constraint = user_false_ata.owner == user.key()
+            @ PredictError::InvalidTokenAccountOwner,
+        constraint = user_false_ata.mint == false_mint.key()
+            @ PredictError::InvalidTokenAccountMint
+    )]
     pub user_false_ata: Account<'info, TokenAccount>,
 
     // ---- Truth network read + vault ----
