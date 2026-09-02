@@ -875,6 +875,11 @@ pub mod predictol_sc {
             PredictError::EventResolved
         );
 
+        require!(
+            !ctx.accounts.truth_network_question.finalized,
+            PredictError::TruthQuestionAlreadyFinalized
+        );
+
         // The Truth question account passed is the SAME one that this event was originally linked to
         require_keys_eq!(
             ctx.accounts.event.truth_question,
@@ -1331,50 +1336,64 @@ pub mod predictol_sc {
         Ok(())
     }
 
-    pub fn sweep_unclaimed_to_house(ctx: Context<SweepUnclaimedToHouse>) -> Result<()> {
+    pub fn sweep_unclaimed_to_house(
+        ctx: Context<SweepUnclaimedToHouse>
+    ) -> Result<()> {
         let ev = &mut ctx.accounts.event;
         let now = Clock::get()?.unix_timestamp;
     
-        require!(ev.resolved, PredictError::EventNotResolved);
-        require!(!ev.unclaimed_swept, PredictError::AlreadySwept);
-    
-        // Only after the unclaimed redemption window has expired
         require!(
-            now >= ev.resolved_at.saturating_add(UNCLAIMED_SWEEP_DELAY_SECS),
+            ev.resolved,
+            PredictError::EventNotResolved
+        );
+    
+        require!(
+            !ev.unclaimed_swept,
+            PredictError::AlreadySwept
+        );
+    
+        // Allow sweep only after the 30-day claim/redemption window.
+        require!(
+            now >= ev
+                .resolved_at
+                .saturating_add(UNCLAIMED_SWEEP_DELAY_SECS),
             PredictError::SweepNotYetAvailable
         );
     
-        let vault_ai = ctx.accounts.collateral_vault.to_account_info();
-        let keep = vault_keep_lamports()?;
+        let vault_ai =
+            ctx.accounts.collateral_vault.to_account_info();
     
+        let keep = vault_keep_lamports()?;
         let vault_lamports = vault_ai.lamports();
     
-        // Reserve:
-        // 1. rent-exempt minimum
-        // 2. creator commission that has not yet been claimed
-        let reserved = keep
-            .checked_add(ev.pending_creator_commission)
-            .ok_or(PredictError::MathOverflow)?;
-    
+        // Keep only the minimum lamports needed for the vault account.
+        // Everything else is forfeited to the house after expiry,
+        // including any unclaimed creator commission.
         require!(
-            vault_lamports > reserved,
+            vault_lamports > keep,
             PredictError::NothingToSweep
         );
     
-        // Only expired/unclaimed bettor funds go to the house.
-        // Creator commission remains in the vault.
         let amount = vault_lamports
-            .checked_sub(reserved)
+            .checked_sub(keep)
             .ok_or(PredictError::MathOverflow)?;
     
-        require!(amount > 0, PredictError::NothingToSweep);
+        require!(
+            amount > 0,
+            PredictError::NothingToSweep
+        );
     
-        let vault_bump = ctx.bumps.collateral_vault;
+        let vault_bump =
+            ctx.bumps.collateral_vault;
     
         transfer_from_collateral_vault(
             &vault_ai,
-            &ctx.accounts.house_treasury.to_account_info(),
-            &ctx.accounts.system_program.to_account_info(),
+            &ctx.accounts
+                .house_treasury
+                .to_account_info(),
+            &ctx.accounts
+                .system_program
+                .to_account_info(),
             &ev.key(),
             vault_bump,
             amount,
@@ -1383,6 +1402,11 @@ pub mod predictol_sc {
         ev.total_collateral_lamports = ev
             .total_collateral_lamports
             .saturating_sub(amount);
+    
+        // IMPORTANT:
+        // Any unclaimed creator commission is now forfeited.
+        // Clear the accounting balance so it cannot be claimed later.
+        ev.pending_creator_commission = 0;
     
         ev.unclaimed_swept = true;
         ev.swept_at = now;
@@ -1926,6 +1950,8 @@ pub enum PredictError {
     InvalidCategory,
     #[msg("Invalid resolved_at timestamp")]
     InvalidResolvedAt,
+    #[msg("Truth Network question is already finalized.")]
+    TruthQuestionAlreadyFinalized,
 }
 
 
