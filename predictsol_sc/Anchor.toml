@@ -7,13 +7,16 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-predictsol_sc = "4cRRBKBMEeNDJXvsHTkEVoEBgnSw4jFTfMXCQwL6n1qt"
+predictsol_sc = "BRjCjFUFQmd3tVCSvWH8NqkJyULbgRKzTTbFzdZzsotV"
+
+[programs.mainnet]
+predictsol_sc = "BRjCjFUFQmd3tVCSvWH8NqkJyULbgRKzTTbFzdZzsotV"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "mainnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
