@@ -2,8 +2,8 @@ import { PublicKey } from "@solana/web3.js";
 
 export const NETWORK = "mainnet";
 
-export const PREDICTSOL_PROGRAM_ID = new PublicKey("Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf");
-export const TRUTH_NETWORK_PROGRAM_ID = new PublicKey("FFL71XjBkjq5gce7EtpB7Wa5p8qnRNueLKSzM4tkEMoc");
+export const PREDICTSOL_PROGRAM_ID = new PublicKey("BRjCjFUFQmd3tVCSvWH8NqkJyULbgRKzTTbFzdZzsotV");
+export const TRUTH_NETWORK_PROGRAM_ID = new PublicKey("A1TH3GZoz6QV4wPECMH2r3tnV3wEWvEtwZwGnfP3U6RX");
 
 export const FALLBACK_RPC_URLS = [
     localStorage.getItem("customRpcUrl") || "https://predictsol.com/rpc",

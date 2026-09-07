@@ -211,6 +211,22 @@ export default function App() {
                             Mainnet
                           </div>
                         </a>
+
+                        <a
+                          href="https://garganey.predictsol.com"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setNetworkMenuOpen(false)}
+                          className="block border-t border-gray-100 px-4 py-3 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-800 dark:text-gray-200 dark:hover:bg-gray-800"
+                        >
+                          <div className="font-medium">
+                            garganey.predictsol.com
+                          </div>
+
+                          <div className="text-xs text-gray-500">
+                            Garganey Mainnet
+                          </div>
+                        </a>
                       </div>
                     )}
                   </div>
@@ -314,6 +330,22 @@ export default function App() {
 
                         <div className="text-xs text-gray-500">
                           Mainnet
+                        </div>
+                      </a>
+
+                      <a
+                        href="https://garganey.predictsol.com"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={closeMenus}
+                        className="block px-6 py-3 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-800"
+                      >
+                        <div className="font-medium">
+                          garganey.predictsol.com
+                        </div>
+
+                        <div className="text-xs text-gray-500">
+                          Garganey Mainnet
                         </div>
                       </a>
                     </div>
