@@ -1,5 +1,5 @@
 {
-  "address": "Fhud5X7RHZT6159Mr964dhZA6SUDj5Dt8Zk54K4x6Twf",
+  "address": "BRjCjFUFQmd3tVCSvWH8NqkJyULbgRKzTTbFzdZzsotV",
   "metadata": {
     "name": "predictol_sc",
     "version": "0.1.0",
@@ -213,7 +213,33 @@
         },
         {
           "name": "counter",
-          "writable": true
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  101,
+                  118,
+                  101,
+                  110,
+                  116,
+                  95,
+                  99,
+                  111,
+                  117,
+                  110,
+                  116,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "creator"
+              }
+            ]
+          }
         },
         {
           "name": "event",
@@ -241,6 +267,9 @@
               }
             ]
           }
+        },
+        {
+          "name": "truth_network_question"
         },
         {
           "name": "system_program",
@@ -716,7 +745,7 @@
         },
         {
           "name": "truth_network_program",
-          "address": "FFL71XjBkjq5gce7EtpB7Wa5p8qnRNueLKSzM4tkEMoc"
+          "address": "jQkyaTq7X9YphoWizETjJf1c1mAZzQPV5iR7afHk5s1"
         },
         {
           "name": "house_treasury",
@@ -1351,6 +1380,36 @@
       "code": 6035,
       "name": "InvalidResolvedAt",
       "msg": "Invalid resolved_at timestamp"
+    },
+    {
+      "code": 6036,
+      "name": "TruthQuestionAlreadyFinalized",
+      "msg": "Truth Network question is already finalized."
+    },
+    {
+      "code": 6037,
+      "name": "TruthCommitPhaseStarted",
+      "msg": "Truth Network commit phase has ended; buying is no longer allowed."
+    },
+    {
+      "code": 6038,
+      "name": "TruthQuestionCreatorMismatch",
+      "msg": "Truth Network question creator does not match event creator."
+    },
+    {
+      "code": 6039,
+      "name": "TruthQuestionTitleMismatch",
+      "msg": "PredictSol event title does not match Truth Network question."
+    },
+    {
+      "code": 6040,
+      "name": "TruthQuestionTimeMismatch",
+      "msg": "PredictSol oracle times do not match Truth Network question."
+    },
+    {
+      "code": 6041,
+      "name": "DeleteNotYetAvailable",
+      "msg": "Event cannot be deleted until 30 days after the reveal phase ends"
     }
   ],
   "types": [

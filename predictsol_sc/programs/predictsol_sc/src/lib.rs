@@ -24,7 +24,7 @@ use truth_network::accounts::Question;
 pub const HOUSE_WALLET: Pubkey = pubkey!("CQaZgx5jqQrz7c8shCG3vJLiiPGPrawSGhvkgXtGyxL");
 
 
-declare_id!("4cRRBKBMEeNDJXvsHTkEVoEBgnSw4jFTfMXCQwL6n1qt");
+declare_id!("BRjCjFUFQmd3tVCSvWH8NqkJyULbgRKzTTbFzdZzsotV");
 
 // ======================================================
 // PDA SEEDS
@@ -66,22 +66,35 @@ fn create_system_pda_0space<'info>(
     system_program: &AccountInfo<'info>,
     signer_seeds: &[&[u8]],
 ) -> Result<()> {
-    let required_lamports = Rent::get()?.minimum_balance(0) as u64;
+    let required_lamports =
+        Rent::get()?.minimum_balance(0);
+
     let current = pda.lamports();
 
-    // Already funded enough: nothing to do.
+    // Existing/prefunded collateral PDA must still be
+    // an ordinary zero-data System Program account.
+    require_keys_eq!(
+        *pda.owner,
+        anchor_lang::solana_program::system_program::ID,
+        PredictError::InvalidVault
+    );
+
+    require!(
+        pda.data_len() == 0,
+        PredictError::InvalidVault
+    );
+
     if current >= required_lamports {
         return Ok(());
     }
 
-    // PDA does not exist yet (0 lamports) -> create it rent-exempt.
     if current == 0 {
         invoke_signed(
             &system_instruction::create_account(
                 payer.key,
                 pda.key,
                 required_lamports,
-                0, // 0 space
+                0,
                 &anchor_lang::solana_program::system_program::ID,
             ),
             &[
@@ -91,14 +104,20 @@ fn create_system_pda_0space<'info>(
             ],
             &[signer_seeds],
         )?;
+
         return Ok(());
     }
 
-    // PDA already exists but is underfunded -> top up with a transfer.
-    let top_up = required_lamports.saturating_sub(current);
+    let top_up = required_lamports
+        .checked_sub(current)
+        .ok_or(PredictError::MathOverflow)?;
 
     anchor_lang::solana_program::program::invoke(
-        &system_instruction::transfer(payer.key, pda.key, top_up),
+        &system_instruction::transfer(
+            payer.key,
+            pda.key,
+            top_up,
+        ),
         &[
             payer.clone(),
             pda.clone(),
@@ -656,6 +675,43 @@ pub mod predictol_sc {
         require!(bet_end_time < commit_end_time, PredictError::InvalidTimeOrder);
         require!(commit_end_time < reveal_end_time, PredictError::InvalidTimeOrder);
         require!(category <= 3, PredictError::InvalidCategory);
+        let truth_question_key = truth_question
+            .ok_or(PredictError::TruthQuestionMismatch)?;
+
+        require_keys_eq!(
+            truth_question_key,
+            ctx.accounts.truth_network_question.key(),
+            PredictError::TruthQuestionMismatch
+        );
+
+        require_keys_eq!(
+            ctx.accounts.truth_network_question.asker,
+            ctx.accounts.creator.key(),
+            PredictError::TruthQuestionCreatorMismatch
+        );
+
+        require!(
+            ctx.accounts.truth_network_question.question_text.as_str()
+                == title.as_str(),
+            PredictError::TruthQuestionTitleMismatch
+        );
+
+        require!(
+            ctx.accounts.truth_network_question.commit_end_time
+                == commit_end_time,
+            PredictError::TruthQuestionTimeMismatch
+        );
+
+        require!(
+            ctx.accounts.truth_network_question.reveal_end_time
+                == reveal_end_time,
+            PredictError::TruthQuestionTimeMismatch
+        );
+
+        require!(
+            !ctx.accounts.truth_network_question.finalized,
+            PredictError::TruthQuestionAlreadyFinalized
+        );
 
         let counter = &mut ctx.accounts.counter;
         let event_id = counter.count;
@@ -669,7 +725,7 @@ pub mod predictol_sc {
         ev.commit_end_time = commit_end_time;
         ev.reveal_end_time = reveal_end_time;
         ev.created_at = now;
-        ev.truth_question = truth_question.unwrap_or_default();
+        ev.truth_question = ctx.accounts.truth_network_question.key();
         ev.total_collateral_lamports = 0;
         ev.total_issued_per_side = 0;
         ev.outstanding_true = 0;
@@ -878,6 +934,11 @@ pub mod predictol_sc {
         require!(
             !ctx.accounts.truth_network_question.finalized,
             PredictError::TruthQuestionAlreadyFinalized
+        );
+
+        require!(
+            now < ctx.accounts.truth_network_question.commit_end_time,
+            PredictError::TruthCommitPhaseStarted
         );
 
         // The Truth question account passed is the SAME one that this event was originally linked to
@@ -1105,13 +1166,14 @@ pub mod predictol_sc {
         let winning_votes = if q.winning_option == 1 {v1} else {v2};
 
         // winning_percent_bps = winning_votes * 10000 / total_votes
-        let wp_bps_u64 = winning_votes
-            .checked_mul(BPS_DENOM)
+        let wp_bps_u128 = (winning_votes as u128)
+            .checked_mul(BPS_DENOM as u128)
             .ok_or(PredictError::MathOverflow)?
-            .checked_div(total_votes)
+            .checked_div(total_votes as u128)
             .ok_or(PredictError::MathOverflow)?;
 
-        let wp_bps: u16 = wp_bps_u64.min(10_000) as u16;
+        let wp_bps: u16 = wp_bps_u128.min(10_000) as u16;
+
         ev.winning_percent_bps = wp_bps;
 
         // if winner but below threshold => resolved but NO winner
@@ -1134,9 +1196,35 @@ pub mod predictol_sc {
         require!(amount > 0, PredictError::InvalidAmount);
 
         let ev = &mut ctx.accounts.event;
-        require!(ev.resolved, PredictError::EventNotResolved);
-        require!(ev.result_status == RESULT_RESOLVED_WINNER, PredictError::InvalidResultStatus);
-        require!(!ev.unclaimed_swept, PredictError::RedemptionExpired);
+        let now = Clock::get()?.unix_timestamp;
+
+        require!(
+            ev.resolved,
+            PredictError::EventNotResolved
+        );
+
+        require!(
+            ev.result_status == RESULT_RESOLVED_WINNER,
+            PredictError::InvalidResultStatus
+        );
+
+        require!(
+            ev.resolved_at > 0,
+            PredictError::InvalidResolvedAt
+        );
+
+    require!(
+        now < ev
+            .resolved_at
+            .saturating_add(UNCLAIMED_SWEEP_DELAY_SECS),
+        PredictError::RedemptionExpired
+    );
+
+    require!(
+        !ev.unclaimed_swept,
+        PredictError::RedemptionExpired
+    );
+        
 
         // Determine which token mint is winning
         let winning_mint = if ev.winning_option == 1 {
@@ -1223,12 +1311,41 @@ pub mod predictol_sc {
         require!(amount > 0, PredictError::InvalidAmount);
 
         let ev = &mut ctx.accounts.event;
-        require!(ev.resolved, PredictError::EventNotResolved);
-        require!(!ev.unclaimed_swept, PredictError::RedemptionExpired);
+        let now = Clock::get()?.unix_timestamp;
+
+        require!(
+            ev.resolved,
+            PredictError::EventNotResolved
+        );
+
+        require!(
+            ev.resolved_at > 0,
+            PredictError::InvalidResolvedAt
+        );
+
+        require!(
+            now < ev
+                .resolved_at
+                .saturating_add(UNCLAIMED_SWEEP_DELAY_SECS),
+            PredictError::RedemptionExpired
+        );
+
+        require!(
+            !ev.unclaimed_swept,
+            PredictError::RedemptionExpired
+        );
 
         // result status must be a no votes, tie or below threshold
         // must not equal to RESULT_RESOLVED_WINNER 
-        require!(ev.result_status != RESULT_RESOLVED_WINNER, PredictError::InvalidResultStatus);
+        require!(
+            matches!(
+                ev.result_status,
+                RESULT_FINALIZED_NO_VOTES
+                    | RESULT_FINALIZED_TIE
+                    | RESULT_FINALIZED_BELOW_THRESHOLD
+            ),
+            PredictError::InvalidResultStatus
+        );
 
         // side must match the mint provided
         let expected_mint = match side {
@@ -1352,6 +1469,11 @@ pub mod predictol_sc {
             PredictError::AlreadySwept
         );
     
+        require!(
+            ev.resolved_at > 0,
+            PredictError::InvalidResolvedAt
+        );
+    
         // Allow sweep only after the 30-day claim/redemption window.
         require!(
             now >= ev
@@ -1366,48 +1488,46 @@ pub mod predictol_sc {
         let keep = vault_keep_lamports()?;
         let vault_lamports = vault_ai.lamports();
     
-        // Keep only the minimum lamports needed for the vault account.
-        // Everything else is forfeited to the house after expiry,
-        // including any unclaimed creator commission.
+        // The collateral vault should never be below its rent reserve
+        // while it is still active.
         require!(
-            vault_lamports > keep,
-            PredictError::NothingToSweep
+            vault_lamports >= keep,
+            PredictError::VaultInsufficientFunds
         );
     
+        // It is valid for there to be nothing left to transfer.
+        // We still need to finalize the expiry state.
         let amount = vault_lamports
             .checked_sub(keep)
             .ok_or(PredictError::MathOverflow)?;
     
-        require!(
-            amount > 0,
-            PredictError::NothingToSweep
-        );
+        if amount > 0 {
+            let vault_bump = ctx.bumps.collateral_vault;
     
-        let vault_bump =
-            ctx.bumps.collateral_vault;
+            transfer_from_collateral_vault(
+                &vault_ai,
+                &ctx.accounts
+                    .house_treasury
+                    .to_account_info(),
+                &ctx.accounts
+                    .system_program
+                    .to_account_info(),
+                &ev.key(),
+                vault_bump,
+                amount,
+            )?;
     
-        transfer_from_collateral_vault(
-            &vault_ai,
-            &ctx.accounts
-                .house_treasury
-                .to_account_info(),
-            &ctx.accounts
-                .system_program
-                .to_account_info(),
-            &ev.key(),
-            vault_bump,
-            amount,
-        )?;
+            ev.total_collateral_lamports = ev
+                .total_collateral_lamports
+                .saturating_sub(amount);
+        }
     
-        ev.total_collateral_lamports = ev
-            .total_collateral_lamports
-            .saturating_sub(amount);
-    
-        // IMPORTANT:
-        // Any unclaimed creator commission is now forfeited.
-        // Clear the accounting balance so it cannot be claimed later.
+        // Any unclaimed creator commission expires with the claim window.
         ev.pending_creator_commission = 0;
     
+        // IMPORTANT:
+        // Mark the expiry transition even if amount == 0.
+        // This prevents an event from becoming permanently undeletable.
         ev.unclaimed_swept = true;
         ev.swept_at = now;
     
@@ -1417,48 +1537,76 @@ pub mod predictol_sc {
     pub fn delete_event(ctx: Context<DeleteEvent>) -> Result<()> {
         let ev = &ctx.accounts.event;
         let now = Clock::get()?.unix_timestamp;
-
-        require!(ev.resolved, PredictError::EventNotResolved);
-        require_keys_eq!(ctx.accounts.creator.key(), ev.creator, PredictError::Unauthorized);
-
-        require!(ev.pending_creator_commission == 0, PredictError::CreatorCommissionNotClaimed);
-        require!(ev.pending_house_commission == 0, PredictError::HouseCommissionNotCleared);
-
-        // compute keep
-        let keep = vault_keep_lamports()?;
-        let vault_lamports = ctx.accounts.collateral_vault.to_account_info().lamports();
-
-        let resolved_at = ev.resolved_at;
-        require!(resolved_at > 0, PredictError::InvalidResolvedAt);
-
-        let after_window = now >= resolved_at.saturating_add(UNCLAIMED_SWEEP_DELAY_SECS);
-        let no_outstanding = no_outstanding_tokens(ev);
-        let vault_empty = vault_lamports <= keep.saturating_add(VAULT_DUST_TOLERANCE_LAMPORTS);
-
-        if !after_window {
-            // BEFORE window: strict, only deletable if no one ever bought / all burned if no winner / winning side - all burned
-            require!(no_outstanding, PredictError::OutstandingTokens);
-            require!(vault_empty, PredictError::VaultNotEmpty);
-        } else {
-            // AFTER window:
-            // - if sweep happened, ok (tokens may exist but is expired)
-            // - if sweep not happened, only allow when there is nothing to sweep (vault empty) and no outstanding tokens
-            if !ev.unclaimed_swept {
-                require!(no_outstanding, PredictError::OutstandingTokens);
-                require!(vault_empty, PredictError::VaultNotEmpty);
-            }
+    
+        require!(
+            ev.resolved,
+            PredictError::EventNotResolved
+        );
+    
+        require_keys_eq!(
+            ctx.accounts.creator.key(),
+            ev.creator,
+            PredictError::Unauthorized
+        );
+    
+        require!(
+            ev.pending_creator_commission == 0,
+            PredictError::CreatorCommissionNotClaimed
+        );
+    
+        require!(
+            ev.pending_house_commission == 0,
+            PredictError::HouseCommissionNotCleared
+        );
+    
+        require!(
+            ev.resolved_at > 0,
+            PredictError::InvalidResolvedAt
+        );
+    
+        // Truth Network allows question deletion 30 days after reveal_end_time.
+        let truth_delete_allowed_at = ev
+            .reveal_end_time
+            .saturating_add(UNCLAIMED_SWEEP_DELAY_SECS);
+    
+        // PredictSol redemption expires 30 days after resolved_at.
+        let redemption_delete_allowed_at = ev
+            .resolved_at
+            .saturating_add(UNCLAIMED_SWEEP_DELAY_SECS);
+    
+        // Never delete while either window is still active.
+        let delete_allowed_at =
+            truth_delete_allowed_at.max(redemption_delete_allowed_at);
+    
+        require!(
+            now >= delete_allowed_at,
+            PredictError::DeleteNotYetAvailable
+        );
+    
+        // If there are still outstanding expired positions,
+        // sweep_unclaimed_to_house must have finalized the expiry first.
+        if !ev.unclaimed_swept {
+            require!(
+                no_outstanding_tokens(ev),
+                PredictError::OutstandingTokens
+            );
         }
-
-        // Always require vault empty (only rent/keep allowed)
-        require!(vault_empty, PredictError::VaultNotEmpty);
-        
-
-        // drain last lamports (close the vault)
+    
+        // No remaining protocol liabilities.
+        // Drain everything, including rent and malicious dust.
+        let vault_lamports =
+            ctx.accounts.collateral_vault.to_account_info().lamports();
+    
         if vault_lamports > 0 {
             let event_key = ctx.accounts.event.key();
             let vault_bump = ctx.bumps.collateral_vault;
-            let seeds: [&[u8]; 3] = [SEED_COLLATERAL_VAULT, event_key.as_ref(), &[vault_bump]];
-
+    
+            let seeds: [&[u8]; 3] = [
+                SEED_COLLATERAL_VAULT,
+                event_key.as_ref(),
+                &[vault_bump],
+            ];
+    
             invoke_signed(
                 &system_instruction::transfer(
                     ctx.accounts.collateral_vault.key,
@@ -1473,7 +1621,7 @@ pub mod predictol_sc {
                 &[&seeds],
             )?;
         }
-
+    
         Ok(())
     }
 
@@ -1569,6 +1717,9 @@ pub struct CreateEventCore<'info> {
     )]
     pub event: Account<'info, Event>,
 
+    // Actual Truth Network question that this event is linked to.
+    pub truth_network_question: Account<'info, Question>,
+
     pub system_program: Program<'info, System>,
 }
 
@@ -1628,17 +1779,31 @@ pub struct BuyPositionsWithFee<'info> {
     #[account(
         mut,
         seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
-        bump
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key()
+            @ PredictError::InvalidVault
     )]
     pub collateral_vault: SystemAccount<'info>,
 
     /// CHECK: PDA mint authority signer
-    #[account(seeds = [SEED_MINT_AUTH, event.key().as_ref()], bump)]
+    #[account(
+        seeds = [SEED_MINT_AUTH, event.key().as_ref()],
+        bump
+    )]
     pub mint_authority: UncheckedAccount<'info>,
 
-    #[account(mut, constraint = event.true_mint == true_mint.key() @ PredictError::InvalidMint)]
+    #[account(
+        mut,
+        constraint = event.true_mint == true_mint.key()
+            @ PredictError::InvalidMint
+    )]
     pub true_mint: Account<'info, Mint>,
-    #[account(mut, constraint = event.false_mint == false_mint.key() @ PredictError::InvalidMint)]
+
+    #[account(
+        mut,
+        constraint = event.false_mint == false_mint.key()
+            @ PredictError::InvalidMint
+    )]
     pub false_mint: Account<'info, Mint>,
 
     #[account(
@@ -1649,7 +1814,7 @@ pub struct BuyPositionsWithFee<'info> {
             @ PredictError::InvalidTokenAccountMint
     )]
     pub user_true_ata: Account<'info, TokenAccount>,
-    
+
     #[account(
         mut,
         constraint = user_false_ata.owner == user.key()
@@ -1659,12 +1824,15 @@ pub struct BuyPositionsWithFee<'info> {
     )]
     pub user_false_ata: Account<'info, TokenAccount>,
 
-    // ---- Truth network read + vault ----
     #[account(mut)]
     pub truth_network_question: Account<'info, Question>,
 
-    /// CHECK: vault is system-owned PDA in Truth-Network (no data), but must be mutable
-    #[account(mut)]
+    /// CHECK: Must exactly match the vault stored by the Truth Network question.
+    #[account(
+        mut,
+        address = truth_network_question.vault_address
+            @ PredictError::InvalidTruthVault
+    )]
     pub truth_network_vault: UncheckedAccount<'info>,
 
     pub token_program: Program<'info, Token>,
@@ -1690,7 +1858,9 @@ pub struct FetchAndStoreWinner<'info> {
     #[account(
         mut,
         seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
-        bump
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key()
+        @ PredictError::InvalidVault
     )]
     pub collateral_vault: AccountInfo<'info>,
 
@@ -1842,7 +2012,9 @@ pub struct SweepUnclaimedToHouse<'info> {
     #[account(
         mut,
         seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
-        bump
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key()
+        @ PredictError::InvalidVault
     )]
     pub collateral_vault: AccountInfo<'info>,
 
@@ -1865,7 +2037,9 @@ pub struct DeleteEvent<'info> {
     #[account(
         mut,
         seeds = [SEED_COLLATERAL_VAULT, event.key().as_ref()],
-        bump
+        bump,
+        constraint = event.collateral_vault == collateral_vault.key()
+        @ PredictError::InvalidVault
     )]
     pub collateral_vault: AccountInfo<'info>,
 
@@ -1952,6 +2126,16 @@ pub enum PredictError {
     InvalidResolvedAt,
     #[msg("Truth Network question is already finalized.")]
     TruthQuestionAlreadyFinalized,
+    #[msg("Truth Network commit phase has ended; buying is no longer allowed.")]
+    TruthCommitPhaseStarted,
+    #[msg("Truth Network question creator does not match event creator.")]
+    TruthQuestionCreatorMismatch,
+    #[msg("PredictSol event title does not match Truth Network question.")]
+    TruthQuestionTitleMismatch,
+    #[msg("PredictSol oracle times do not match Truth Network question.")]
+    TruthQuestionTimeMismatch,
+    #[msg("Event cannot be deleted until 30 days after the reveal phase ends")]
+    DeleteNotYetAvailable,
 }
 
 

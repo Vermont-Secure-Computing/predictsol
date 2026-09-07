@@ -275,6 +275,7 @@ export default function CreateEvent() {
           creator,
           counter: counterPda,
           event: eventPda,
+          truthNetworkQuestion: truthQuestionPda,
           systemProgram: SystemProgram.programId,
         })
         .instruction();
